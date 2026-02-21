@@ -4,6 +4,7 @@ from utils import log
 from .internal import router as internal_router
 from .listings import router as listings_router
 from .users import router as users_router
+from .wizard import router as wizard_router
 
 logger = log.get_logger(__name__)
 
@@ -11,6 +12,7 @@ router = APIRouter(prefix="/api")
 router.include_router(users_router)
 router.include_router(listings_router)
 router.include_router(internal_router)
+router.include_router(wizard_router)
 
 
 @router.post("/seed", tags=["dev"])
