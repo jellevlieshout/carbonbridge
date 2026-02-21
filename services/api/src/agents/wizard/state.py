@@ -3,6 +3,13 @@ LangGraph state for the buyer wizard agent.
 
 All fields are optional (total=False) so nodes can return partial dicts
 and LangGraph merges them into the existing state correctly.
+
+Terminal outcome signals:
+  - handoff_to_buyer_agent: wizard handed off to buyer agent for immediate purchase
+  - buyer_agent_run_id: run ID of the triggered buyer agent
+  - buyer_agent_outcome: "purchased" | "proposed_for_approval" | "skipped" | "failed"
+  - waitlist_opted_in: user accepted autonomous agent monitoring
+  - conversation_complete: wizard flow is finished (any terminal outcome)
 """
 
 from __future__ import annotations
@@ -29,7 +36,14 @@ class WizardState(TypedDict, total=False):
     conversation_history: List[ConversationMessage]
     latest_user_message: str
 
-    # ── extracted data ────────────────────────────────────────────────
+    # ── user / company profile (hydrated from User doc at session start) ──
+    buyer_profile: Optional[Dict[str, Any]]
+    company_name: Optional[str]
+    company_sector: Optional[str]
+    company_country: Optional[str]
+    company_size_employees: Optional[int]
+
+    # ── extracted preferences ─────────────────────────────────────────
     extracted_preferences: Optional[ExtractedPreferences]
 
     # ── context carried between steps ─────────────────────────────────
@@ -37,7 +51,6 @@ class WizardState(TypedDict, total=False):
     recommended_listings: List[Dict[str, Any]]
     draft_order_id: Optional[str]
     draft_order_total_eur: Optional[float]
-    buyer_profile: Optional[Dict[str, Any]]
 
     # ── listing search state ──────────────────────────────────────────
     search_broadened: bool   # True once we have already loosened filters
@@ -45,6 +58,15 @@ class WizardState(TypedDict, total=False):
     # ── autonomous-buy handoff ────────────────────────────────────────
     autobuy_opt_in: bool
     autobuy_criteria_snapshot: Optional[Dict[str, Any]]
+
+    # ── terminal outcome signals ──────────────────────────────────────
+    handoff_to_buyer_agent: bool     # wizard triggered buyer agent immediately
+    buyer_agent_run_id: Optional[str]  # run ID of triggered agent run
+    buyer_agent_outcome: Optional[str]  # purchased | proposed_for_approval | skipped | failed
+    buyer_agent_message: Optional[str]  # human-readable outcome message
+    waitlist_opted_in: bool          # user accepted future autonomous buy
+    waitlist_declined: bool          # user explicitly declined
+    conversation_complete: bool      # any terminal path was reached
 
     # ── output produced by the current node ──────────────────────────
     response_text: str
@@ -69,9 +91,20 @@ def state_from_session(session: WizardSession, latest_message: str) -> WizardSta
         draft_order_id=d.draft_order_id,
         draft_order_total_eur=d.draft_order_total_eur,
         buyer_profile=None,
+        company_name=None,
+        company_sector=None,
+        company_country=None,
+        company_size_employees=None,
         search_broadened=getattr(d, "search_broadened", False),
         autobuy_opt_in=getattr(d, "autobuy_opt_in", False),
         autobuy_criteria_snapshot=getattr(d, "autobuy_criteria_snapshot", None),
+        handoff_to_buyer_agent=False,
+        buyer_agent_run_id=None,
+        buyer_agent_outcome=None,
+        buyer_agent_message=None,
+        waitlist_opted_in=False,
+        waitlist_declined=False,
+        conversation_complete=False,
         response_text="",
         next_step=None,
         error=None,

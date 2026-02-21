@@ -83,7 +83,7 @@ async def lifespan(app: FastAPI):
     logger.info("Autonomous buyer agent: Gemini (Pydantic AI) mode enabled")
 
     # Initialize agent scheduler
-    from agent.scheduler import init_scheduler, shutdown_scheduler
+    from agents.buyer.scheduler import init_scheduler, shutdown_scheduler
 
     init_scheduler()
 

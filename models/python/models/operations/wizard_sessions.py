@@ -82,6 +82,12 @@ async def wizard_session_save_context(
     search_broadened: Optional[bool] = None,
     autobuy_opt_in: Optional[bool] = None,
     autobuy_criteria_snapshot: Optional[Dict[str, Any]] = None,
+    handoff_to_buyer_agent: Optional[bool] = None,
+    buyer_agent_run_id: Optional[str] = None,
+    buyer_agent_outcome: Optional[str] = None,
+    waitlist_opted_in: Optional[bool] = None,
+    waitlist_declined: Optional[bool] = None,
+    conversation_complete: Optional[bool] = None,
 ) -> Optional[WizardSession]:
     """
     Persist graph-level context so the session can be fully resumed.
@@ -104,5 +110,17 @@ async def wizard_session_save_context(
         session.data.autobuy_opt_in = autobuy_opt_in
     if autobuy_criteria_snapshot is not None:
         session.data.autobuy_criteria_snapshot = autobuy_criteria_snapshot
+    if handoff_to_buyer_agent is not None:
+        session.data.handoff_to_buyer_agent = handoff_to_buyer_agent
+    if buyer_agent_run_id is not None:
+        session.data.buyer_agent_run_id = buyer_agent_run_id
+    if buyer_agent_outcome is not None:
+        session.data.buyer_agent_outcome = buyer_agent_outcome
+    if waitlist_opted_in is not None:
+        session.data.waitlist_opted_in = waitlist_opted_in
+    if waitlist_declined is not None:
+        session.data.waitlist_declined = waitlist_declined
+    if conversation_complete is not None:
+        session.data.conversation_complete = conversation_complete
     session.data.last_active_at = datetime.now(timezone.utc)
     return await WizardSession.update(session)
