@@ -3,12 +3,14 @@ from fastapi import APIRouter, Request, HTTPException, Query, Depends
 from utils import log
 from .users import router as users_router
 from .listings import router as listings_router
+from .internal import router as internal_router
 
 logger = log.get_logger(__name__)
 
 router = APIRouter(prefix="/api")
 router.include_router(users_router)
 router.include_router(listings_router)
+router.include_router(internal_router)
 
 
 @router.post("/seed", tags=["dev"])
