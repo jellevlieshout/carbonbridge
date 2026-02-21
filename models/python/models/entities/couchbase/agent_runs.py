@@ -37,7 +37,7 @@ class AgentRunData(BaseCouchbaseEntityData):
     listings_shortlisted: List[str] = []
     final_selection_id: Optional[str] = None
     selection_rationale: Optional[str] = None
-    action_taken: Optional[Literal["purchased", "proposed", "skipped", "failed"]] = None
+    action_taken: Optional[Literal["purchased", "proposed", "skipped", "failed", "recommendations_generated"]] = None
     order_id: Optional[str] = None
     error_message: Optional[str] = None
 

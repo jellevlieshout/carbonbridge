@@ -1,11 +1,13 @@
 """
-API endpoints for the autonomous buyer agent.
+API endpoints for agent runs (buyer + seller advisory).
 
-POST /agent/trigger          — manually trigger agent run
-GET  /agent/runs             — list buyer's agent runs
-GET  /agent/runs/{run_id}    — get run detail with trace steps
-POST /agent/runs/{id}/approve — approve a proposed purchase
-POST /agent/runs/{id}/reject  — reject a proposed purchase
+POST /agent/trigger              — manually trigger buyer agent
+POST /agent/trigger-advisory     — manually trigger seller advisory agent
+GET  /agent/runs                 — list user's agent runs (optional ?agent_type filter)
+GET  /agent/runs/{run_id}        — get run detail with trace steps
+GET  /agent/runs/{run_id}/export — raw AgentRun document as JSON
+POST /agent/runs/{id}/approve    — approve a proposed purchase
+POST /agent/runs/{id}/reject     — reject a proposed purchase
 """
 
 from datetime import datetime
@@ -15,6 +17,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel
 
 from agent.buyer_agent import run_buyer_agent
+from agent.seller_agent import run_seller_advisory_agent
 from models.entities.couchbase.orders import OrderLineItem
 from models.entities.couchbase.users import User
 from models.operations.agent_runs import (
@@ -30,7 +33,7 @@ from models.operations.orders import (
 )
 from utils import env, log
 
-from .dependencies import require_authenticated
+from .dependencies import require_authenticated, require_seller
 
 logger = log.get_logger(__name__)
 
@@ -49,6 +52,7 @@ class TriggerResponse(BaseModel):
 
 class AgentRunSummary(BaseModel):
     id: str
+    agent_type: str
     status: str
     trigger_reason: str
     action_taken: Optional[str] = None
@@ -92,13 +96,17 @@ async def route_agent_trigger(
 # ---------------------------------------------------------------------------
 
 @router.get("/runs", response_model=List[AgentRunSummary])
-async def route_agent_runs(user: dict = Depends(require_authenticated)):
-    """List the authenticated buyer's agent runs."""
-    buyer_id = user["sub"]
-    runs = await agent_run_get_by_owner(buyer_id, agent_type="autonomous_buyer")
+async def route_agent_runs(
+    agent_type: Optional[str] = None,
+    user: dict = Depends(require_authenticated),
+):
+    """List the authenticated user's agent runs, optionally filtered by agent_type."""
+    owner_id = user["sub"]
+    runs = await agent_run_get_by_owner(owner_id, agent_type=agent_type)
     return [
         AgentRunSummary(
             id=r.id,
+            agent_type=r.data.agent_type,
             status=r.data.status,
             trigger_reason=r.data.trigger_reason,
             action_taken=r.data.action_taken,
@@ -130,6 +138,7 @@ async def route_agent_run_detail(
 
     return AgentRunDetail(
         id=run.id,
+        agent_type=run.data.agent_type,
         status=run.data.status,
         trigger_reason=run.data.trigger_reason,
         action_taken=run.data.action_taken,
@@ -241,6 +250,7 @@ async def route_agent_run_approve(
     updated = await agent_run_get(run_id)
     return AgentRunDetail(
         id=updated.id,
+        agent_type=updated.data.agent_type,
         status=updated.data.status,
         trigger_reason=updated.data.trigger_reason,
         action_taken=updated.data.action_taken,
@@ -281,6 +291,7 @@ async def route_agent_run_reject(
     updated = await agent_run_get(run_id)
     return AgentRunDetail(
         id=updated.id,
+        agent_type=updated.data.agent_type,
         status=updated.data.status,
         trigger_reason=updated.data.trigger_reason,
         action_taken=updated.data.action_taken,
@@ -292,4 +303,25 @@ async def route_agent_run_reject(
         selection_rationale=updated.data.selection_rationale,
         trace_steps=[s.model_dump() for s in updated.data.trace_steps],
         listings_shortlisted=updated.data.listings_shortlisted,
+    )
+
+
+# ---------------------------------------------------------------------------
+# POST /agent/trigger-advisory
+# ---------------------------------------------------------------------------
+
+@router.post("/trigger-advisory", response_model=TriggerResponse, status_code=202)
+async def route_agent_trigger_advisory(
+    background_tasks: BackgroundTasks,
+    user: dict = Depends(require_seller),
+):
+    """Manually trigger the seller advisory agent for the current user (seller role required)."""
+    seller_id = user["sub"]
+
+    background_tasks.add_task(run_seller_advisory_agent, seller_id, "manual")
+
+    return TriggerResponse(
+        run_id="pending",
+        status="running",
+        message="Seller advisory agent triggered. Poll GET /api/agent/runs?agent_type=seller_advisory for results.",
     )

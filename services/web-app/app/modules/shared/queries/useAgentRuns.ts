@@ -1,10 +1,10 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { agentRunsList, agentRunGet, agentTrigger, agentRunApprove, agentRunReject } from "@clients/api/agent";
+import { agentRunsList, agentRunGet, agentTrigger, agentTriggerAdvisory, agentRunApprove, agentRunReject } from "@clients/api/agent";
 
-export const useAgentRuns = () => {
+export const useAgentRuns = (agentType?: string) => {
     return useQuery({
-        queryKey: ["agent-runs"],
-        queryFn: () => agentRunsList(),
+        queryKey: ["agent-runs", agentType],
+        queryFn: () => agentRunsList(agentType),
         refetchInterval: 5000,
     });
 };
@@ -49,6 +49,16 @@ export const useAgentReject = () => {
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["agent-runs"] });
             queryClient.invalidateQueries({ queryKey: ["agent-run"] });
+        },
+    });
+};
+
+export const useSellerAdvisoryTrigger = () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: () => agentTriggerAdvisory(),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["agent-runs"] });
         },
     });
 };

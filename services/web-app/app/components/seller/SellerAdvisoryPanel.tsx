@@ -1,0 +1,440 @@
+import React, { useEffect, useRef, useState } from 'react';
+import gsap from 'gsap';
+import { ScrollTrigger } from 'gsap/ScrollTrigger';
+import { useAgentRuns, useAgentRunDetail, useSellerAdvisoryTrigger } from '../../modules/shared/queries/useAgentRuns';
+import type { AgentRunSummary, TraceStep } from '@clients/api/agent';
+
+gsap.registerPlugin(ScrollTrigger);
+
+const NOISE_BG = "url(\"data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E\")";
+
+/* ── Transform trace steps into friendly stream messages ──────── */
+type StreamTag = 'SCAN' | 'INSIGHT' | 'ALERT' | 'REC' | 'DONE';
+
+interface StreamMessage {
+    tag: StreamTag;
+    text: string;
+    time: string;
+}
+
+function traceToStream(step: TraceStep, triggeredAt: string | null): StreamMessage {
+    const base = triggeredAt ? new Date(triggeredAt) : new Date();
+    const offset = step.duration_ms || 0;
+    const t = new Date(base.getTime() + offset);
+    const time = t.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+    const out = step.output && typeof step.output === 'object' ? step.output : {};
+
+    switch (step.label) {
+        case 'Agent run initialized':
+            return { tag: 'SCAN', text: 'Advisory agent triggered. Analyzing your portfolio...', time };
+        case 'Loaded seller profile':
+            return { tag: 'SCAN', text: `Profile loaded for ${out.company || 'your organization'}. Scanning listings...`, time };
+        case 'Starting Gemini listing analysis':
+            return { tag: 'SCAN', text: 'Cross-referencing your listings against OffsetsDB market data via AI...', time };
+        case 'Gemini analysis complete':
+            return {
+                tag: 'INSIGHT',
+                text: `Analysis complete. Market position: ${out.market_position || 'assessed'}. ${out.recommendation_count || 0} recommendations generated.`,
+                time,
+            };
+        case 'Advisory recommendations generated':
+            if (Array.isArray(out.recommendations) && out.recommendations.length > 0) {
+                const first = out.recommendations[0];
+                return { tag: 'REC', text: `${first.summary || 'Recommendation available'}`, time };
+            }
+            return { tag: 'REC', text: 'Recommendations generated for your listings.', time };
+        case 'Advisory complete':
+            return { tag: 'DONE', text: out.overall_assessment ? String(out.overall_assessment).slice(0, 140) : 'Advisory complete.', time };
+        default:
+            return { tag: 'SCAN', text: step.label, time };
+    }
+}
+
+function getTagStyle(tag: StreamTag): string {
+    switch (tag) {
+        case 'SCAN': return 'text-linen/50 bg-linen/8';
+        case 'INSIGHT': return 'text-sky-300 bg-sky-500/15';
+        case 'ALERT': return 'text-amber-300 bg-amber-500/15';
+        case 'REC': return 'text-emerald-300 bg-emerald-500/15';
+        case 'DONE': return 'text-sage bg-sage/15';
+        default: return 'text-linen/40 bg-linen/5';
+    }
+}
+
+/* ── Extract recommendations from trace steps ─────────────────── */
+interface Recommendation {
+    listing_id: string;
+    type: string;
+    summary: string;
+    details: string;
+    suggested_price_eur: number | null;
+}
+
+function extractRecommendations(steps: TraceStep[]): Recommendation[] {
+    for (const step of steps) {
+        if (step.label === 'Advisory recommendations generated' && step.output?.recommendations) {
+            return step.output.recommendations;
+        }
+    }
+    return [];
+}
+
+function getRecTypeStyle(type: string): { bg: string; text: string; label: string } {
+    switch (type) {
+        case 'price_adjustment': return { bg: 'bg-amber-500/15', text: 'text-amber-300', label: 'Price' };
+        case 'highlight_co_benefits': return { bg: 'bg-emerald-500/15', text: 'text-emerald-300', label: 'Co-Benefits' };
+        case 'vintage_note': return { bg: 'bg-sky-500/15', text: 'text-sky-300', label: 'Vintage' };
+        case 'competitive_strength': return { bg: 'bg-sage/15', text: 'text-sage', label: 'Strength' };
+        default: return { bg: 'bg-linen/10', text: 'text-linen/60', label: 'Tip' };
+    }
+}
+
+/* ── Run selector pill ─────────────────────────────────────────── */
+function RunPill({ run, isSelected, onSelect }: { run: AgentRunSummary; isSelected: boolean; onSelect: () => void }) {
+    const time = run.triggered_at
+        ? new Date(run.triggered_at).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
+        : '...';
+    const dot = run.status === 'running' ? 'bg-ember animate-ping'
+        : run.status === 'completed' ? 'bg-emerald-400'
+        : run.status === 'failed' ? 'bg-red-400'
+        : 'bg-amber-400 animate-pulse';
+
+    return (
+        <button
+            onClick={onSelect}
+            className={`shrink-0 flex items-center gap-2 px-4 py-2 rounded-full border transition-all duration-300 cursor-pointer ${
+                isSelected
+                    ? 'bg-linen/15 border-linen/20 text-linen'
+                    : 'bg-linen/[0.03] border-linen/5 text-linen/35 hover:bg-linen/[0.07] hover:text-linen/55'
+            }`}
+        >
+            <div className={`w-1.5 h-1.5 rounded-full ${dot}`} />
+            <span className="font-mono text-[11px] whitespace-nowrap">{time}</span>
+        </button>
+    );
+}
+
+/* ── Main Panel ────────────────────────────────────────────────── */
+export function SellerAdvisoryPanel() {
+    const containerRef = useRef<HTMLDivElement>(null);
+    const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
+
+    const { data: runs, isLoading: runsLoading } = useAgentRuns('seller_advisory');
+    const { data: runDetail } = useAgentRunDetail(selectedRunId);
+    const triggerMutation = useSellerAdvisoryTrigger();
+
+    const isRunning = runDetail?.status === 'running';
+
+    // Auto-select first run
+    useEffect(() => {
+        if (runs?.length && !selectedRunId) setSelectedRunId(runs[0].id);
+    }, [runs, selectedRunId]);
+
+    // GSAP entrance
+    useEffect(() => {
+        if (!containerRef.current) return;
+        const ctx = gsap.context(() => {
+            gsap.fromTo(
+                ".advisory-stagger",
+                { y: 30, opacity: 0 },
+                {
+                    y: 0, opacity: 1, stagger: 0.12, duration: 0.8, ease: "power3.out",
+                    scrollTrigger: { trigger: containerRef.current, start: "top 85%" },
+                }
+            );
+        }, containerRef);
+        return () => ctx.revert();
+    }, []);
+
+    // Derive data
+    const streamMessages: StreamMessage[] = runDetail?.trace_steps
+        ? [...runDetail.trace_steps].map(s => traceToStream(s, runDetail.triggered_at)).reverse()
+        : [];
+    const recommendations = runDetail?.trace_steps ? extractRecommendations(runDetail.trace_steps) : [];
+
+    const handleTrigger = () => {
+        triggerMutation.mutate(undefined, {
+            onError: (err: any) => console.error('Seller advisory trigger failed:', err),
+        });
+    };
+
+    return (
+        <div ref={containerRef} className="relative w-full rounded-[2rem] bg-canopy text-linen overflow-hidden shadow-sm">
+            {/* Noise + gradient */}
+            <div className="absolute inset-0 pointer-events-none opacity-[0.04] mix-blend-overlay z-0" style={{ backgroundImage: NOISE_BG }} />
+            <div className="absolute inset-0 z-0 bg-[radial-gradient(circle_at_20%_100%,rgba(61,107,82,0.4)_0%,transparent_50%)] pointer-events-none" />
+
+            <div className="relative z-10 p-10">
+                {/* ── Header ─────────────────────────────────────── */}
+                <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-8">
+                    <h2 className="advisory-stagger text-[3rem] leading-[1.1] tracking-tight font-serif italic text-linen">
+                        Market Advisory
+                        <span className="block text-xl mt-1 not-italic font-sans font-medium text-linen/60 tracking-normal">
+                            AI-powered listing optimization
+                        </span>
+                    </h2>
+                    <button
+                        onClick={handleTrigger}
+                        disabled={triggerMutation.isPending}
+                        className="advisory-stagger shrink-0 px-6 py-3 bg-linen text-canopy font-sans font-medium rounded-xl hover:bg-linen/90 transition-all duration-300 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2 shadow-sm cursor-pointer"
+                    >
+                        {triggerMutation.isPending ? (
+                            <>
+                                <span className="w-3.5 h-3.5 border-2 border-canopy/30 border-t-canopy rounded-full animate-spin" />
+                                Analyzing...
+                            </>
+                        ) : 'Run Advisory'}
+                    </button>
+                </div>
+
+                {/* ── Run pills ──────────────────────────────────── */}
+                {runs && runs.length > 0 && (
+                    <div className="advisory-stagger flex items-center gap-2 overflow-x-auto pb-2 mb-8 scrollbar-thin">
+                        {runs.map(run => (
+                            <RunPill key={run.id} run={run} isSelected={selectedRunId === run.id} onSelect={() => setSelectedRunId(run.id)} />
+                        ))}
+                    </div>
+                )}
+
+                {/* ── Content ────────────────────────────────────── */}
+                {/* Loading */}
+                {runsLoading && (
+                    <div className="flex items-center justify-center py-16 gap-3">
+                        <span className="w-4 h-4 border-2 border-linen/15 border-t-linen/50 rounded-full animate-spin" />
+                        <span className="font-mono text-xs text-linen/25">Loading...</span>
+                    </div>
+                )}
+
+                {/* Empty state */}
+                {!runsLoading && (!runs || runs.length === 0) && (
+                    <div className="advisory-stagger flex flex-col md:flex-row gap-8">
+                        <div className="flex-1">
+                            <p className="font-serif italic text-2xl text-linen/25 leading-relaxed">
+                                No advisory runs yet. Click "Run Advisory" to get AI-powered recommendations for your listings.
+                            </p>
+                        </div>
+                        <div className="w-full md:w-1/3 bg-slate/20 rounded-2xl p-6 border border-linen/5 backdrop-blur-sm">
+                            <div className="flex items-center gap-2 mb-4">
+                                <div className="w-2 h-2 rounded-full bg-linen/20" />
+                                <span className="text-xs font-sans font-medium text-linen/30 uppercase tracking-wider">Advisory Idle</span>
+                            </div>
+                            <div className="font-mono text-sm text-linen/20 min-h-[3rem]">
+                                Ready to analyze your portfolio...
+                                <span className="inline-block w-2 h-4 bg-linen/20 align-middle ml-1 animate-pulse" />
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Active run */}
+                {runDetail && (
+                    <div className="advisory-stagger flex flex-col lg:flex-row gap-8">
+
+                        {/* ── Left: Stream feed ──────────────────────── */}
+                        <div className="flex-1 bg-slate/30 rounded-2xl border border-linen/5 backdrop-blur-sm overflow-hidden flex flex-col">
+                            {/* Feed header */}
+                            <div className="flex items-center justify-between px-6 py-4 border-b border-linen/5">
+                                <h3 className="font-sans font-semibold text-sm tracking-tight text-linen/90">Advisory Stream</h3>
+                                {isRunning ? (
+                                    <div className="flex items-center gap-2 bg-ember/20 px-2.5 py-1 rounded-full border border-ember/30">
+                                        <div className="w-1.5 h-1.5 rounded-full bg-ember animate-ping" />
+                                        <span className="font-mono text-[10px] uppercase font-semibold text-ember tracking-wider">Analyzing</span>
+                                    </div>
+                                ) : runDetail.status === 'completed' ? (
+                                    <div className="flex items-center gap-2 bg-emerald-500/15 px-2.5 py-1 rounded-full border border-emerald-500/20">
+                                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                                        <span className="font-mono text-[10px] uppercase font-semibold text-emerald-300 tracking-wider">Complete</span>
+                                    </div>
+                                ) : runDetail.status === 'failed' ? (
+                                    <div className="flex items-center gap-2 bg-red-500/15 px-2.5 py-1 rounded-full border border-red-500/20">
+                                        <div className="w-1.5 h-1.5 rounded-full bg-red-400" />
+                                        <span className="font-mono text-[10px] uppercase font-semibold text-red-300 tracking-wider">Error</span>
+                                    </div>
+                                ) : null}
+                            </div>
+
+                            {/* Feed body */}
+                            <div className="flex-1 px-6 py-5 overflow-y-auto max-h-[380px]">
+                                {/* Thinking spinner while running */}
+                                {isRunning && streamMessages.length === 0 && (
+                                    <div className="flex flex-col items-center justify-center py-12 gap-5">
+                                        <div className="relative w-20 h-20">
+                                            <div className="absolute inset-0 border border-linen/10 rounded-full animate-spin" style={{ animationDuration: '12s' }} />
+                                            <div className="absolute inset-3 border border-linen/15 rounded-full animate-spin" style={{ animationDirection: 'reverse', animationDuration: '8s' }} />
+                                            <div className="absolute inset-6 border-[1.5px] border-sky-400/30 rounded-full animate-pulse" />
+                                            <div className="absolute inset-0 flex items-center justify-center">
+                                                <div className="w-3 h-3 rounded-full bg-sky-400/60 animate-ping" />
+                                            </div>
+                                        </div>
+                                        <span className="font-mono text-xs text-linen/25">Analyzing market data...</span>
+                                    </div>
+                                )}
+
+                                {/* Stream messages */}
+                                {streamMessages.length > 0 && (
+                                    <div className="flex flex-col gap-4">
+                                        {streamMessages.map((msg, i) => (
+                                            <div
+                                                key={`${msg.time}-${i}`}
+                                                className="flex flex-col text-sm font-mono animate-in slide-in-from-top-2 fade-in duration-500 ease-out"
+                                                style={{ opacity: Math.max(0.25, 1 - (i * 0.12)) }}
+                                            >
+                                                <div className="flex items-center gap-2 mb-1">
+                                                    <span className="text-[10px] text-linen/30">{msg.time}</span>
+                                                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-[4px] uppercase ${getTagStyle(msg.tag)}`}>
+                                                        {msg.tag}
+                                                    </span>
+                                                </div>
+                                                <p className="text-xs leading-relaxed text-linen/75">{msg.text}</p>
+                                            </div>
+                                        ))}
+
+                                        {isRunning && (
+                                            <div className="flex items-center gap-2 pt-1">
+                                                <div className="flex items-center gap-1">
+                                                    <div className="w-1.5 h-1.5 rounded-full bg-sky-400/50 animate-bounce" style={{ animationDelay: '0ms', animationDuration: '1.4s' }} />
+                                                    <div className="w-1.5 h-1.5 rounded-full bg-sky-400/50 animate-bounce" style={{ animationDelay: '200ms', animationDuration: '1.4s' }} />
+                                                    <div className="w-1.5 h-1.5 rounded-full bg-sky-400/50 animate-bounce" style={{ animationDelay: '400ms', animationDuration: '1.4s' }} />
+                                                </div>
+                                                <span className="font-mono text-[10px] text-linen/20">Analyzing...</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
+                                {/* No run selected */}
+                                {!isRunning && streamMessages.length === 0 && (
+                                    <div className="flex items-center justify-center py-12">
+                                        <div className="font-mono text-sm text-linen/15 text-center">
+                                            Ready for analysis...
+                                            <span className="inline-block w-2 h-4 bg-linen/15 align-middle ml-1 animate-pulse" />
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* ── Right: Recommendations + Status ─────────── */}
+                        <div className="w-full lg:w-[380px] shrink-0 flex flex-col gap-5">
+                            {/* Recommendations cards */}
+                            {recommendations.length > 0 ? (
+                                <div className="bg-white/[0.06] rounded-2xl p-5 border border-linen/5 backdrop-blur-sm">
+                                    <div className="flex items-center justify-between mb-5">
+                                        <h3 className="font-sans font-semibold text-sm text-linen/90 tracking-tight">Recommendations</h3>
+                                        <span className="font-mono text-[10px] uppercase tracking-wider text-linen/30 bg-linen/5 px-2 py-1 rounded-md">
+                                            {recommendations.length} tips
+                                        </span>
+                                    </div>
+                                    <div className="flex flex-col gap-3 max-h-[300px] overflow-y-auto">
+                                        {recommendations.map((rec, i) => {
+                                            const style = getRecTypeStyle(rec.type);
+                                            return (
+                                                <div
+                                                    key={`${rec.listing_id}-${i}`}
+                                                    className="rounded-xl p-4 border border-linen/5 bg-linen/[0.03] backdrop-blur-sm"
+                                                >
+                                                    <div className="flex items-center gap-2 mb-2">
+                                                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-[4px] uppercase ${style.bg} ${style.text}`}>
+                                                            {style.label}
+                                                        </span>
+                                                        {rec.suggested_price_eur && (
+                                                            <span className="font-mono text-[10px] text-emerald-300/60 bg-emerald-500/10 px-2 py-0.5 rounded-full">
+                                                                €{rec.suggested_price_eur.toFixed(2)}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <p className="font-sans text-xs text-linen/80 leading-relaxed">{rec.summary}</p>
+                                                    <p className="font-mono text-[10px] text-linen/40 mt-2 leading-relaxed">{rec.details.slice(0, 120)}{rec.details.length > 120 ? '...' : ''}</p>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            ) : (
+                                /* Placeholder while scanning */
+                                <div className="bg-white/[0.06] rounded-2xl p-5 border border-linen/5 backdrop-blur-sm">
+                                    <div className="flex items-center justify-between mb-5">
+                                        <h3 className="font-sans font-semibold text-sm text-linen/90 tracking-tight">Recommendations</h3>
+                                        <span className="font-mono text-[10px] uppercase tracking-wider text-linen/30 bg-linen/5 px-2 py-1 rounded-md">
+                                            {isRunning ? 'Scanning' : 'Pending'}
+                                        </span>
+                                    </div>
+                                    <div className="flex flex-col gap-3">
+                                        {[0, 1, 2].map(i => (
+                                            <div
+                                                key={i}
+                                                className="rounded-xl p-4 border border-linen/5 bg-linen/[0.02]"
+                                                style={{ opacity: 0.5 - (i * 0.15) }}
+                                            >
+                                                <div className="h-3 w-16 bg-linen/8 rounded mb-3 animate-pulse" />
+                                                <div className="h-2.5 w-full bg-linen/5 rounded animate-pulse mb-2" />
+                                                <div className="h-2.5 w-3/4 bg-linen/3 rounded animate-pulse" />
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Advisory status card */}
+                            <div className="bg-slate/20 rounded-2xl p-6 border border-linen/5 backdrop-blur-sm">
+                                <div className="flex items-center gap-2 mb-4">
+                                    <div className={`w-2 h-2 rounded-full ${isRunning ? 'bg-sky-400 animate-pulse ring-2 ring-sky-400/30' : 'bg-linen/20'}`} />
+                                    <span className="text-xs font-sans font-medium text-linen/70 uppercase tracking-wider">
+                                        {isRunning ? 'Analyzing' : 'Advisory Status'}
+                                    </span>
+                                </div>
+                                <div className="font-mono text-sm leading-relaxed text-linen/90 min-h-[3.5rem]">
+                                    {isRunning ? (
+                                        <>
+                                            Comparing your listings against market benchmarks...
+                                            <span className="inline-block w-2 h-4 bg-sky-400 align-middle ml-1 animate-pulse" />
+                                        </>
+                                    ) : runDetail.selection_rationale ? (
+                                        runDetail.selection_rationale.slice(0, 160) + (runDetail.selection_rationale.length > 160 ? '...' : '')
+                                    ) : runDetail.status === 'failed' ? (
+                                        <span className="text-red-300/60">Advisory run encountered an error.</span>
+                                    ) : (
+                                        <>
+                                            Ready for next analysis...
+                                            <span className="inline-block w-2 h-4 bg-linen/20 align-middle ml-1 animate-pulse" />
+                                        </>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Stat pills */}
+                            <div className="flex flex-wrap gap-2">
+                                {runDetail.trace_steps && runDetail.trace_steps.length > 0 && (
+                                    <div className="font-mono text-xs bg-linen/10 px-4 py-2 rounded-full border border-linen/10 flex items-center gap-2">
+                                        <span className="opacity-60">Steps</span>
+                                        <span className="font-medium text-linen">{runDetail.trace_steps.length}</span>
+                                    </div>
+                                )}
+                                {runDetail.listings_shortlisted && runDetail.listings_shortlisted.length > 0 && (
+                                    <div className="font-mono text-xs bg-linen/10 px-4 py-2 rounded-full border border-linen/10 flex items-center gap-2">
+                                        <span className="opacity-60">Listings Analyzed</span>
+                                        <span className="font-medium text-linen">{runDetail.listings_shortlisted.length}</span>
+                                    </div>
+                                )}
+                                {runDetail.action_taken && (
+                                    <div className="font-mono text-xs bg-linen/10 px-4 py-2 rounded-full border border-linen/10 flex items-center gap-2">
+                                        <span className="opacity-60">Result</span>
+                                        <span className="font-medium text-linen capitalize">{runDetail.action_taken.replace('_', ' ')}</span>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Error */}
+                            {runDetail.status === 'failed' && runDetail.error_message && (
+                                <div className="bg-red-500/10 rounded-xl px-4 py-3 border border-red-500/15">
+                                    <p className="font-mono text-[11px] text-red-300/70 leading-relaxed">{runDetail.error_message.slice(0, 200)}</p>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+}

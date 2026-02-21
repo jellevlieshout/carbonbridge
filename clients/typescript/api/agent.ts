@@ -24,6 +24,7 @@ export interface TraceStep {
 
 export interface AgentRunSummary {
     id: string;
+    agent_type: 'autonomous_buyer' | 'seller_advisory';
     status: 'running' | 'completed' | 'failed' | 'awaiting_approval';
     trigger_reason: string;
     action_taken: string | null;
@@ -50,8 +51,13 @@ export async function agentTrigger(): Promise<TriggerResponse> {
     return await post('/agent/trigger');
 }
 
-export async function agentRunsList(): Promise<AgentRunSummary[]> {
-    return await get('/agent/runs');
+export async function agentTriggerAdvisory(): Promise<TriggerResponse> {
+    return await post('/agent/trigger-advisory');
+}
+
+export async function agentRunsList(agentType?: string): Promise<AgentRunSummary[]> {
+    const params = agentType ? `?agent_type=${agentType}` : '';
+    return await get(`/agent/runs${params}`);
 }
 
 export async function agentRunGet(runId: string): Promise<AgentRunDetail> {
