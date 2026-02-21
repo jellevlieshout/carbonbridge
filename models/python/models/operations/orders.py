@@ -39,6 +39,14 @@ async def order_set_payment_intent(order_id: str, payment_intent_id: str) -> Opt
     return await Order.update(order)
 
 
+async def order_set_payment_link(order_id: str, url: str) -> Optional[Order]:
+    order = await Order.get(order_id)
+    if not order:
+        return None
+    order.data.stripe_payment_link_url = url
+    return await Order.update(order)
+
+
 async def order_update_payment_status(order_id: str, payment_status: str) -> Optional[Order]:
     order = await Order.get(order_id)
     if not order:

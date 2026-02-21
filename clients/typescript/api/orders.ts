@@ -15,6 +15,7 @@ export interface Order {
     total_eur: number;
     stripe_payment_intent_id: string | null;
     stripe_client_secret: string | null;
+    stripe_payment_link_url: string | null;
     retirement_requested: boolean;
 }
 
