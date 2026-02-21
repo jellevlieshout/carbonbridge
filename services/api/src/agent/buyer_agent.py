@@ -41,6 +41,8 @@ from models.operations.orders import (
     order_set_payment_intent,
     order_update_status,
 )
+from opentelemetry import trace as otel_trace
+
 from utils import env, log
 
 from .base import check_no_running_run
@@ -48,6 +50,7 @@ from .budget import get_remaining_budget_eur
 from .scorer import rank_listings
 
 logger = log.get_logger(__name__)
+tracer = otel_trace.get_tracer("carbonbridge.buyer_agent")
 
 STRIPE_SECRET_KEY = env.EnvVarSpec(
     id="STRIPE_SECRET_KEY", is_optional=True, is_secret=True
@@ -303,10 +306,7 @@ async def run_buyer_agent(
             raise ValueError(f"Buyer {buyer_id} not found")
 
         profile = user.data.buyer_profile
-        if not profile or not profile.autonomous_agent_enabled:
-            raise ValueError(f"Autonomous agent not enabled for {buyer_id}")
-
-        criteria = profile.autonomous_agent_criteria or {}
+        criteria = (profile.autonomous_agent_criteria if profile else None) or {}
         monthly_budget = criteria.get("monthly_budget_eur", DEFAULT_MONTHLY_BUDGET)
         auto_approve_under = criteria.get("auto_approve_under_eur", DEFAULT_AUTO_APPROVE_UNDER)
         max_price = criteria.get("max_price_eur", DEFAULT_MAX_PRICE)
@@ -363,12 +363,16 @@ async def run_buyer_agent(
         )
         step_idx += 1
 
-        result = await _buyer_agent.run(
-            "Search for available carbon credit listings matching the buyer's criteria, "
-            "score them, select the best match, and decide whether to purchase, propose "
-            "for approval, or skip. Return your decision with a clear rationale.",
-            deps=deps,
-        )
+        with tracer.start_as_current_span("buyer_agent_run") as span:
+            span.set_attribute("carbonbridge.run_id", run_id)
+            span.set_attribute("carbonbridge.buyer_id", buyer_id)
+            span.set_attribute("carbonbridge.trigger", trigger)
+            result = await _buyer_agent.run(
+                "Search for available carbon credit listings matching the buyer's criteria, "
+                "score them, select the best match, and decide whether to purchase, propose "
+                "for approval, or skip. Return your decision with a clear rationale.",
+                deps=deps,
+            )
         decision = result.output
 
         # Record Gemini's decision
