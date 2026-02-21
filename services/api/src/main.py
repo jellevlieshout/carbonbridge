@@ -26,7 +26,17 @@ async def lifespan(app: FastAPI):
     else:
         logger.warning("Authentication is disabled (set USE_AUTH to enable)")
 
+    # Log agent availability
+    logger.info("Autonomous buyer agent: Gemini (Pydantic AI) mode enabled")
+
+    # Initialize agent scheduler
+    from agent.scheduler import init_scheduler, shutdown_scheduler
+    init_scheduler()
+
     yield
+
+    # Shutdown agent scheduler
+    shutdown_scheduler()
 
 app = FastAPI(
     title="Backend API",
