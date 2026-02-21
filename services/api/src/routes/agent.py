@@ -77,18 +77,6 @@ async def route_agent_trigger(
     """Manually trigger the autonomous buyer agent for the current user."""
     buyer_id = user["sub"]
 
-    # Verify agent is enabled
-    db_user = user.get("db_user")
-    if not db_user:
-        raise HTTPException(status_code=500, detail="User not loaded")
-
-    profile = db_user.data.buyer_profile
-    if not profile or not profile.autonomous_agent_enabled:
-        raise HTTPException(
-            status_code=400,
-            detail="Autonomous agent is not enabled for this account",
-        )
-
     # Launch agent as background task so the response returns immediately
     background_tasks.add_task(run_buyer_agent, buyer_id, "manual")
 
