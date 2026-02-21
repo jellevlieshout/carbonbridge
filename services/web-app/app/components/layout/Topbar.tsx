@@ -3,13 +3,21 @@ import { Bell, Plus, LogOut } from 'lucide-react';
 import { useAuth } from '@clients/api/modules/phantom-token-handler-secured-api-client/AuthContext';
 import { logout } from '@clients/api/client';
 import { ErrorRenderer } from '@clients/api/modules/phantom-token-handler-secured-api-client/utilities/errorRenderer';
+import { useUserResourcesQuery } from '~/modules/shared/queries/useUserResources';
 
 export function Topbar() {
     const { userInfo, onLoggedOut } = useAuth();
+    const { data: userData } = useUserResourcesQuery();
     const [time, setTime] = useState<string>('');
     const [initials, setInitials] = useState('');
     const [showDropdown, setShowDropdown] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
+
+    const user = userData?.user;
+    const companyName = user?.company_name || 'CarbonBridge User';
+    const sector = user?.sector;
+    const role = user?.role;
+    const tagLabel = [sector, role ? (role === 'buyer' ? 'Buyer' : 'Seller') : null].filter(Boolean).join(' / ');
 
     useEffect(() => {
         const updateTime = () => {
@@ -67,12 +75,14 @@ export function Topbar() {
         <header className="fixed top-0 right-0 left-[80px] h-20 z-30 bg-white/70 backdrop-blur-md border-b border-mist flex items-center justify-between px-8 text-slate">
             {/* Left side */}
             <div className="flex flex-col justify-center">
-                <h1 className="font-sans font-medium text-lg tracking-tight">Welcome back, Hargreaves & Sons.</h1>
-                <div className="mt-1">
-                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-sage/10 text-sage">
-                        Manufacturing / Scope 2
-                    </span>
-                </div>
+                <h1 className="font-sans font-medium text-lg tracking-tight">Welcome back, {companyName}.</h1>
+                {tagLabel && (
+                    <div className="mt-1">
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-sage/10 text-sage">
+                            {tagLabel}
+                        </span>
+                    </div>
+                )}
             </div>
 
             {/* Right side */}
@@ -111,6 +121,11 @@ export function Topbar() {
                                     <p className="text-sm font-medium text-slate truncate">
                                         {userInfo.name.givenName} {userInfo.name.familyName}
                                     </p>
+                                    {user?.company_name && (
+                                        <p className="text-xs text-slate/50 truncate mt-0.5">
+                                            {user.company_name}
+                                        </p>
+                                    )}
                                 </div>
                             )}
                             <button

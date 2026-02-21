@@ -52,6 +52,8 @@ tools:
 
             - { name: TIGERBEETLE_ADDRESS, value: pt.value tigerbeetle-address }
 
+            - { name: STRIPE_SECRET_KEY, value: pt.secret stripe-secret-key }
+
             - { name: OPENROUTER_PROVISIONING_API_KEY, value: pt.secret openrouter-provisioning-api-key }
           mounts:
             - { path: /root/.cache/, source: { type: volume, scope: project, id: api-dependency-cache } }
