@@ -117,7 +117,10 @@ BUYERS = [
             autonomous_agent_criteria={
                 "max_price_eur": 35.0,
                 "min_vintage_year": 2022,
-                "preferred_types": ["renewable"],
+                "preferred_types": ["renewable", "methane_capture"],
+                "preferred_co_benefits": ["jobs", "energy_access", "community"],
+                "monthly_budget_eur": 50000.0,
+                "auto_approve_under_eur": 15000.0,
             },
         ),
     },

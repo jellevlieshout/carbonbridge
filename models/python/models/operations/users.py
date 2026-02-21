@@ -1,5 +1,5 @@
 import asyncio
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from models.entities.couchbase.users import User, UserData, BuyerProfile
 
@@ -100,3 +100,17 @@ async def ensure_tigerbeetle_accounts(user_id: str) -> Tuple[int, int]:
     await User.update(user)
 
     return (pending_id, settled_id)
+
+
+async def user_get_agent_enabled_buyers() -> List[User]:
+    """Find all users where buyer_profile.autonomous_agent_enabled is true."""
+    keyspace = User.get_keyspace()
+    query = (
+        f"SELECT META().id, * FROM {keyspace} "
+        f"WHERE buyer_profile.autonomous_agent_enabled = true"
+    )
+    rows = await keyspace.query(query)
+    return [
+        User(id=row["id"], data=row.get("users"))
+        for row in rows if row.get("users")
+    ]

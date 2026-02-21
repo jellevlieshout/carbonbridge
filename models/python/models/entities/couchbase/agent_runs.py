@@ -5,10 +5,13 @@ from clients.couchbase import BaseModelCouchbase, BaseCouchbaseEntityData
 
 
 class ScoreBreakdown(BaseModel):
+    listing_id: Optional[str] = None
     project_type_match: float = 0.0
     price_score: float = 0.0
     vintage_score: float = 0.0
     co_benefit_score: float = 0.0
+    verification_score: float = 0.0
+    quantity_fit: float = 0.0
     total: float = 0.0
 
 
