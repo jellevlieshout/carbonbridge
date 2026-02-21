@@ -1,12 +1,36 @@
 import asyncio
 import hashlib
-import random
+import os
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 router = APIRouter(prefix="/fake-registry", tags=["fake-registry"])
+
+# Configurable via env vars (spec section 13)
+FAILURE_RATE = float(os.environ.get("FAKE_REGISTRY_FAILURE_RATE", "0.1"))
+MIN_LATENCY_MS = int(os.environ.get("FAKE_REGISTRY_MIN_LATENCY_MS", "800"))
+MAX_LATENCY_MS = int(os.environ.get("FAKE_REGISTRY_MAX_LATENCY_MS", "2000"))
+
+
+def _stable_hash(seed: str) -> int:
+    """Hash-based deterministic int — same input always gives same result."""
+    return int(hashlib.sha256(seed.encode()).hexdigest(), 16)
+
+
+def _should_fail(seed: str) -> bool:
+    """Deterministic failure: hash the input, check against failure rate."""
+    if FAILURE_RATE <= 0:
+        return False
+    return (_stable_hash(seed) % 10_000) < int(FAILURE_RATE * 10_000)
+
+
+async def _simulate_latency(seed: str) -> None:
+    """Deterministic latency within configured range."""
+    spread = MAX_LATENCY_MS - MIN_LATENCY_MS
+    jitter = _stable_hash(seed) % (spread + 1) if spread > 0 else 0
+    await asyncio.sleep((MIN_LATENCY_MS + jitter) / 1000)
 
 
 class ProjectMetadata(BaseModel):
@@ -122,12 +146,8 @@ _retired: dict[str, int] = {}
 
 @router.get("/projects/{project_id}", response_model=ProjectMetadata)
 async def get_project(project_id: str):
-    # Simulate API latency (800ms - 2000ms)
-    latency = random.uniform(0.8, 2.0)
-    await asyncio.sleep(latency)
-    
-    # Simulate 10% failure rate
-    if random.random() < 0.10:
+    await _simulate_latency(f"project:{project_id}")
+    if _should_fail(f"project:failure:{project_id}"):
         raise HTTPException(status_code=503, detail="Simulated Registry Outage")
         
     if project_id in PROJECTS_DB:
@@ -148,12 +168,8 @@ async def get_project(project_id: str):
 
 @router.get("/credits/{serial_range:path}", response_model=CreditValidation)
 async def get_credits(serial_range: str):
-    # Simulate API latency (800ms - 2000ms)
-    latency = random.uniform(0.8, 2.0)
-    await asyncio.sleep(latency)
-
-    # Simulate 10% failure rate
-    if random.random() < 0.10:
+    await _simulate_latency(f"credits:{serial_range}")
+    if _should_fail(f"credits:failure:{serial_range}"):
         raise HTTPException(status_code=503, detail="Simulated Registry Outage")
 
     if serial_range in CREDITS_DB:
@@ -186,12 +202,8 @@ async def get_credits(serial_range: str):
 
 @router.post("/retire", response_model=RetireResponse)
 async def retire_credits(payload: RetireRequest):
-    # Simulate API latency (800ms - 2000ms)
-    latency = random.uniform(0.8, 2.0)
-    await asyncio.sleep(latency)
-
-    # Simulate 10% failure rate
-    if random.random() < 0.10:
+    await _simulate_latency(f"retire:{payload.serial_range}")
+    if _should_fail(f"retire:failure:{payload.serial_range}"):
         raise HTTPException(status_code=503, detail="Simulated Registry Outage")
 
     if payload.serial_range not in CREDITS_DB:
