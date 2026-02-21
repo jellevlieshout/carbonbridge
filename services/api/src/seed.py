@@ -166,6 +166,33 @@ ADMIN = {
     "country": "Netherlands",
 }
 
+# Curity test user — key matches the 'sub' claim from the OIDC token
+CURITY_TEST_USER = {
+    "key": "jelle",
+    "email": "jelle@carbonbridge.io",
+    "role": "buyer",
+    "company_name": "Jelle's Test Company",
+    "company_size_employees": 10,
+    "sector": "Technology",
+    "country": "Netherlands",
+    "buyer_profile": BuyerProfile(
+        annual_co2_tonnes_estimate=5000.0,
+        primary_offset_motivation="esg_reporting",
+        preferred_project_types=["renewable", "afforestation"],
+        preferred_regions=["Europe", "Africa"],
+        budget_per_tonne_max_eur=30.0,
+        autonomous_agent_enabled=True,
+        autonomous_agent_criteria={
+            "max_price_eur": 30.0,
+            "min_vintage_year": 2022,
+            "preferred_types": ["renewable", "afforestation", "cookstoves"],
+            "preferred_co_benefits": ["jobs", "community", "biodiversity"],
+            "monthly_budget_eur": 25000.0,
+            "auto_approve_under_eur": 10000.0,
+        },
+    ),
+}
+
 
 def _build_listings() -> list[dict]:
     """Return a list of listing dicts tied to the sellers above."""
@@ -488,7 +515,7 @@ async def run_seed() -> dict:
     }
 
     # ---- Users ----
-    all_users = [ADMIN] + SELLERS + BUYERS
+    all_users = [ADMIN, CURITY_TEST_USER] + SELLERS + BUYERS
     for u in all_users:
         key = u.pop("key")
         data = UserData(**u)
