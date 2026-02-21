@@ -1,4 +1,4 @@
-import { get, put, del } from './client';
+import { get, post, put, del } from './client';
 
 export interface Listing {
     id: string;
@@ -27,6 +27,26 @@ export interface ListingSearchResponse {
     count: number;
 }
 
+export interface ListingCreateRequest {
+    registry_name: string;
+    registry_project_id?: string | null;
+    serial_number_range?: string | null;
+    project_name: string;
+    project_type?: string;
+    project_country?: string | null;
+    vintage_year?: number | null;
+    quantity_tonnes: number;
+    price_per_tonne_eur: number;
+    methodology?: string | null;
+    co_benefits?: string[];
+    description?: string | null;
+    supporting_documents?: string[];
+}
+
+export async function listingCreate(data: ListingCreateRequest): Promise<Listing> {
+    return await post('/listings/', data);
+}
+
 export async function listingsGet(): Promise<ListingSearchResponse> {
     return await get('/listings/');
 }
@@ -48,5 +68,5 @@ export async function listingDelete(id: string): Promise<void> {
 }
 
 export async function listingVerify(id: string): Promise<Listing> {
-    return await get(`/listings/${id}/verify`);
+    return await post(`/listings/${id}/verify`, {});
 }

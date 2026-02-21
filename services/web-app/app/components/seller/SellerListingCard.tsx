@@ -1,8 +1,8 @@
 import React from 'react';
 import {
     Leaf, Wind, Flame, Factory, Zap, Tractor, Sun, HelpCircle,
-    Pause, Play, Archive, Pencil,
-    ShieldCheck, AlertTriangle, MapPin, Calendar,
+    Pause, Play, Archive, Pencil, ShieldCheck, AlertTriangle,
+    MapPin, Calendar, Rocket, Loader2,
 } from 'lucide-react';
 import type { Listing } from '@clients/api/listings';
 
@@ -36,9 +36,11 @@ interface SellerListingCardProps {
     onEdit: (listing: Listing) => void;
     onStatusChange: (id: string, status: string) => void;
     onArchive: (id: string) => void;
+    onVerify?: (id: string) => void;
+    isVerifying?: boolean;
 }
 
-export function SellerListingCard({ listing, onEdit, onStatusChange, onArchive }: SellerListingCardProps) {
+export function SellerListingCard({ listing, onEdit, onStatusChange, onArchive, onVerify, isVerifying }: SellerListingCardProps) {
     const available = listing.quantity_tonnes - listing.quantity_reserved - listing.quantity_sold;
     const soldPercent = listing.quantity_tonnes > 0
         ? Math.round((listing.quantity_sold / listing.quantity_tonnes) * 100)
@@ -154,6 +156,31 @@ export function SellerListingCard({ listing, onEdit, onStatusChange, onArchive }
                         >
                             <Pencil size={15} strokeWidth={1.5} />
                         </button>
+                        {listing.verification_status !== 'verified' && onVerify && (
+                            <button
+                                onClick={() => onVerify(listing.id)}
+                                disabled={isVerifying}
+                                title={listing.verification_status === 'failed' ? "Retry verification" : "Verify with registry"}
+                                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition-colors cursor-pointer border-0 disabled:opacity-50 ${
+                                    listing.verification_status === 'failed'
+                                        ? 'bg-red-50 text-red-600 hover:bg-red-100'
+                                        : 'bg-sky-50 text-sky-600 hover:bg-sky-100'
+                                }`}
+                            >
+                                {isVerifying ? <Loader2 size={13} className="animate-spin" /> : <ShieldCheck size={13} strokeWidth={1.5} />}
+                                {listing.verification_status === 'failed' ? 'Retry' : 'Verify'}
+                            </button>
+                        )}
+                        {listing.status === 'draft' && listing.verification_status === 'verified' && (
+                            <button
+                                onClick={() => onStatusChange(listing.id, 'active')}
+                                title="Activate listing"
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 text-emerald-600 hover:bg-emerald-100 text-xs font-medium transition-colors cursor-pointer border-0"
+                            >
+                                <Rocket size={13} strokeWidth={1.5} />
+                                Activate
+                            </button>
+                        )}
                         {listing.status === 'active' ? (
                             <button
                                 onClick={() => onStatusChange(listing.id, 'paused')}

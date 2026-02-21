@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { listingsGetMine, listingUpdate, listingDelete, type Listing } from '@clients/api/listings';
-import { Leaf } from 'lucide-react';
+import { listingsGetMine, listingUpdate, listingDelete, listingVerify, type Listing } from '@clients/api/listings';
+import { Leaf, Plus } from 'lucide-react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 
@@ -9,14 +9,18 @@ import { SellerHeroPanel } from '../components/seller/SellerHeroPanel';
 import { SellerStatsTiles } from '../components/seller/SellerStatsTiles';
 import { SellerListingCard } from '../components/seller/SellerListingCard';
 import { EditListingModal } from '../components/seller/EditListingModal';
+import { CreateListingModal } from '../components/seller/CreateListingModal';
+import { useCreateListing } from '../modules/shared/queries/useListings';
 
 gsap.registerPlugin(ScrollTrigger);
 
 export default function SellerListingsPage() {
     const queryClient = useQueryClient();
     const [editingListing, setEditingListing] = useState<Listing | null>(null);
+    const [showCreateModal, setShowCreateModal] = useState(false);
     const [filter, setFilter] = useState<string>('all');
     const listingsRef = useRef<HTMLDivElement>(null);
+    const createMutation = useCreateListing();
 
     const { data, isLoading } = useQuery({
         queryKey: ['listings', 'mine'],
@@ -33,6 +37,11 @@ export default function SellerListingsPage() {
 
     const archiveMutation = useMutation({
         mutationFn: (id: string) => listingDelete(id),
+        onSuccess: () => queryClient.invalidateQueries({ queryKey: ['listings', 'mine'] }),
+    });
+
+    const verifyMutation = useMutation({
+        mutationFn: (id: string) => listingVerify(id),
         onSuccess: () => queryClient.invalidateQueries({ queryKey: ['listings', 'mine'] }),
     });
 
@@ -85,9 +94,19 @@ export default function SellerListingsPage() {
 
             {/* Section header + Filter Tabs */}
             <div className="flex items-end justify-between mt-4">
-                <div>
-                    <h2 className="font-serif italic text-3xl text-slate">Your Listings</h2>
-                    <p className="text-slate/50 text-sm mt-1 font-sans">Manage, pause, and track your carbon credit portfolio</p>
+                <div className="flex items-center gap-4">
+                    <div>
+                        <h2 className="font-serif italic text-3xl text-slate">Your Listings</h2>
+                        <p className="text-slate/50 text-sm mt-1 font-sans">Manage, pause, and track your carbon credit portfolio</p>
+                    </div>
+                    <button
+                        onClick={() => setShowCreateModal(true)}
+                        className="magnetic-btn h-10 px-5 rounded-full bg-slate text-linen font-medium text-sm cursor-pointer border-0 flex items-center gap-2 shrink-0 self-start mt-1"
+                    >
+                        <div className="magnetic-bg bg-canopy" />
+                        <Plus size={16} className="relative z-10" />
+                        <span className="relative z-10">Add Listing</span>
+                    </button>
                 </div>
 
                 <div className="flex gap-2">
@@ -129,6 +148,8 @@ export default function SellerListingsPage() {
                             onEdit={setEditingListing}
                             onStatusChange={handleStatusChange}
                             onArchive={(id) => archiveMutation.mutate(id)}
+                            onVerify={(id) => verifyMutation.mutate(id)}
+                            isVerifying={verifyMutation.isPending}
                         />
                     ))}
                 </div>
@@ -140,6 +161,19 @@ export default function SellerListingsPage() {
                     listing={editingListing}
                     onClose={() => setEditingListing(null)}
                     onSave={handleEdit}
+                />
+            )}
+
+            {/* Create Modal */}
+            {showCreateModal && (
+                <CreateListingModal
+                    onClose={() => setShowCreateModal(false)}
+                    onSave={(data) => {
+                        createMutation.mutate(data, {
+                            onSuccess: () => setShowCreateModal(false),
+                        });
+                    }}
+                    isSubmitting={createMutation.isPending}
                 />
             )}
         </div>
