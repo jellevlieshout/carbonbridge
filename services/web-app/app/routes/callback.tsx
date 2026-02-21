@@ -1,1 +1,6 @@
-export { default, meta } from "./home";
+export { default } from "./home";
+export function meta() {
+    return [
+        { title: "CarbonBridge | Authenticating..." },
+    ];
+}

@@ -11,6 +11,14 @@ import { SellerListingCard } from '../components/seller/SellerListingCard';
 import { EditListingModal } from '../components/seller/EditListingModal';
 import { CreateListingModal } from '../components/seller/CreateListingModal';
 import { useCreateListing } from '../modules/shared/queries/useListings';
+import type { Route } from "./+types/seller-listings";
+
+export function meta({ }: Route.MetaArgs) {
+    return [
+        { title: "CarbonBridge | My Listings" },
+        { name: "description", content: "Manage your carbon credit portfolio." },
+    ];
+}
 
 gsap.registerPlugin(ScrollTrigger);
 

@@ -30,3 +30,53 @@ async def route_seed():
 
     counts = await run_seed()
     return {"status": "ok", "seeded": counts}
+
+
+@router.get("/ledger", tags=["dev"])
+async def route_ledger_status():
+    """Inspect TigerBeetle ledger state: platform account + all user accounts with TB accounts."""
+    from clients.tigerbeetle.client import (
+        get_tigerbeetle_client,
+        lookup_account_balance,
+        PLATFORM_ESCROW_ACCOUNT_ID,
+    )
+    from models.entities.couchbase.users import User
+
+    try:
+        get_tigerbeetle_client()
+    except Exception as e:
+        return {"status": "error", "detail": f"Cannot connect to TigerBeetle: {e}"}
+
+    # Platform escrow account
+    platform = lookup_account_balance(PLATFORM_ESCROW_ACCOUNT_ID)
+
+    # Query users that have TigerBeetle accounts
+    keyspace = User.get_keyspace()
+    rows = await keyspace.query(
+        f"SELECT META().id, * FROM {keyspace} "
+        f"WHERE tigerbeetle_settled_account_id IS NOT NULL"
+    )
+
+    user_accounts = []
+    for row in rows:
+        data = row.get("users")
+        if not data:
+            continue
+        u = User(id=row["id"], data=data)
+        settled_balance = lookup_account_balance(u.data.tigerbeetle_settled_account_id)
+        user_accounts.append({
+            "user_id": u.id,
+            "email": u.data.email,
+            "role": u.data.role,
+            "settled_account_id": u.data.tigerbeetle_settled_account_id,
+            "balance_cents": settled_balance,
+        })
+
+    return {
+        "status": "ok",
+        "platform_escrow": {
+            "account_id": PLATFORM_ESCROW_ACCOUNT_ID,
+            "balance_cents": platform,
+        },
+        "user_accounts": user_accounts,
+    }

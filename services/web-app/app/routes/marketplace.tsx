@@ -5,6 +5,14 @@ import { Badge } from "~/modules/shared/ui/badge";
 import { Button } from "~/modules/shared/ui/button";
 import { MapPin, Leaf, CalendarIcon } from "lucide-react";
 import { CheckoutModal } from "~/components/buyer/CheckoutModal";
+import type { Route } from "./+types/marketplace";
+
+export function meta({ }: Route.MetaArgs) {
+    return [
+        { title: "CarbonBridge | Marketplace" },
+        { name: "description", content: "Browse and purchase high-quality, verified carbon credits." },
+    ];
+}
 
 export default function MarketplacePage() {
     const { data, isLoading, isError, error } = useListings();

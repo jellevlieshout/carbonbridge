@@ -13,7 +13,7 @@ export function AuthenticatedHomeView({
     return (
         <>
             <div className="mx-10">
-                <h2>Welcome to Smart SEB Lab</h2>
+                <h2>Welcome to CarbonBridge Lab</h2>
             </div>
         </>
     );

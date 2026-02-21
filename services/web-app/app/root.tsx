@@ -10,6 +10,11 @@ import {
 import type { Route } from "./+types/root";
 import "./app.css";
 
+export const meta: Route.MetaFunction = () => [
+  { title: "CarbonBridge" },
+  { name: "description", content: "Carbon Bridge - Connecting Carbon Markets" },
+];
+
 export const links: Route.LinksFunction = () => [
   {
     rel: "icon",

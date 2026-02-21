@@ -4,9 +4,9 @@ import { Suspense } from "react";
 import { PageSkeleton } from "~/modules/shared/components/PageSkeleton";
 import { WizardPresenter } from "~/modules/wizard/presenters/WizardPresenter";
 
-export function meta({}: Route.MetaArgs) {
+export function meta({ }: Route.MetaArgs) {
   return [
-    { title: "Purchase Wizard — CarbonBridge" },
+    { title: "CarbonBridge | Purchase Wizard" },
     { name: "description", content: "Guided carbon credit purchasing wizard" },
   ];
 }
