@@ -52,8 +52,8 @@ logger = log.get_logger(__name__)
 STRIPE_SECRET_KEY = env.EnvVarSpec(
     id="STRIPE_SECRET_KEY", is_optional=True, is_secret=True
 )
-GOOGLE_API_KEY = env.EnvVarSpec(
-    id="GOOGLE_API_KEY", is_optional=True, is_secret=True
+GEMINI_API_KEY = env.EnvVarSpec(
+    id="GEMINI_API_KEY", is_optional=True, is_secret=True
 )
 
 # Default criteria values when buyer hasn't specified
