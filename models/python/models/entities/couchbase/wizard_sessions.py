@@ -29,6 +29,15 @@ class WizardSessionData(BaseCouchbaseEntityData):
     last_active_at: Optional[datetime] = None
     expires_at: Optional[datetime] = None
 
+    # ── graph context persisted for resume ────────────────────────────
+    # Raw footprint estimate returned by the estimate_footprint tool
+    footprint_context: Optional[Dict[str, Any]] = None
+    # Listings shown to the buyer in the recommendation step
+    recommended_listing_ids: List[str] = []
+    # Draft order if created
+    draft_order_id: Optional[str] = None
+    draft_order_total_eur: Optional[float] = None
+
 
 class WizardSession(BaseModelCouchbase[WizardSessionData]):
     _collection_name = "wizard_sessions"

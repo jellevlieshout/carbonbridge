@@ -1,3 +1,4 @@
+import os
 import uvicorn
 from pathlib import Path
 from contextlib import asynccontextmanager
@@ -12,6 +13,38 @@ from clients.couchbase import check_connection
 log.init(conf.get_log_level())
 logger = log.get_logger(__name__)
 
+
+def _init_observability() -> None:
+    """
+    Wire LangSmith tracing for Pydantic AI agents via OpenTelemetry.
+    Gracefully no-ops if the required packages or env vars are absent.
+    """
+    api_key = (
+        os.environ.get("LANGSMITH_API_KEY")
+        or os.environ.get("LANGSMITH_API")
+    )
+    if not api_key:
+        logger.info("LANGSMITH_API_KEY not set — agent tracing disabled")
+        return
+
+    project = os.environ.get("LANGSMITH_PROJECT", "carbonbridge")
+
+    try:
+        from langsmith.integrations.otel import configure as langsmith_configure
+        from pydantic_ai import Agent
+
+        # Ensure the key is set in env for the SDK to pick up
+        os.environ.setdefault("LANGSMITH_API_KEY", api_key)
+
+        langsmith_configure(project_name=project)
+        Agent.instrument_all()
+        logger.info("LangSmith tracing enabled (project: %s)", project)
+    except ImportError:
+        logger.warning("langsmith or pydantic_ai not installed — tracing disabled")
+    except Exception as exc:
+        logger.warning("Failed to initialize LangSmith tracing: %s", exc)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Check database connection
@@ -25,6 +58,9 @@ async def lifespan(app: FastAPI):
         app.state.auth_client = auth.AuthClient(conf.get_auth_config())
     else:
         logger.warning("Authentication is disabled (set USE_AUTH to enable)")
+
+    # Initialize agent observability
+    _init_observability()
 
     yield
 

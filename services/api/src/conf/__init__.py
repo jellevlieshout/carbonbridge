@@ -56,6 +56,20 @@ HTTP_EXPOSE_ERRORS = EnvVarSpec(
 ## NOTE: Twilio configuration is added dynamically by the add-twilio-client script.
 ## When added, it creates src/conf/twilio.py with env var definitions.
 
+## AI Agents ##
+
+WIZARD_MODEL = EnvVarSpec(id="WIZARD_MODEL", default="gemini-2.0-flash", is_optional=True)
+GOOGLE_API_KEY = EnvVarSpec(id="GOOGLE_API_KEY", is_optional=True, is_secret=True)
+GEMINI_API_KEY = EnvVarSpec(id="GEMINI_API_KEY", is_optional=True, is_secret=True)
+INTERNAL_AGENT_API_KEY = EnvVarSpec(id="INTERNAL_AGENT_API_KEY", is_optional=True, is_secret=True)
+INTERNAL_API_BASE_URL = EnvVarSpec(id="INTERNAL_API_BASE_URL", default="http://localhost:3030/api", is_optional=True)
+
+## Observability ##
+
+LANGSMITH_API_KEY = EnvVarSpec(id="LANGSMITH_API_KEY", is_optional=True, is_secret=True)
+# Also accept LANGSMITH_API as alias (used in some envs)
+LANGSMITH_API = EnvVarSpec(id="LANGSMITH_API", is_optional=True, is_secret=True)
+LANGSMITH_PROJECT = EnvVarSpec(id="LANGSMITH_PROJECT", default="carbonbridge", is_optional=True)
 
 #### Validation ####
 VALIDATED_ENV_VARS = [HTTP_AUTORELOAD, HTTP_EXPOSE_ERRORS, HTTP_PORT, LOG_LEVEL]
