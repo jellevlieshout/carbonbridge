@@ -9,11 +9,12 @@ gsap.registerPlugin(ScrollTrigger);
 const NOISE_BG = "url(\"data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E\")";
 
 /* ── Transform trace steps into friendly stream messages ──────── */
-type StreamTag = 'SCAN' | 'MATCH' | 'ALERT' | 'HOLD' | 'BUY' | 'DONE';
+type StreamTag = 'SCAN' | 'MATCH' | 'ALERT' | 'HOLD' | 'BUY' | 'PAY' | 'DONE';
 
 interface StreamMessage {
     tag: StreamTag;
     text: string;
+    detail?: string;
     time: string;
 }
 
@@ -70,27 +71,76 @@ function traceToStream(step: TraceStep, triggeredAt: string | null): StreamMessa
         case 'Agent run initialized':
             return { tag: 'SCAN', text: 'Autonomous agent triggered. Initializing market scan...', time };
         case 'Loaded buyer profile and criteria':
-            return { tag: 'SCAN', text: `Profile loaded. Budget: €${Number(out.monthly_budget_eur || 0).toLocaleString()}/month. Scanning...`, time };
+            return {
+                tag: 'SCAN',
+                text: `Profile loaded. Budget: €${Number(out.monthly_budget_eur || 0).toLocaleString()}/month.`,
+                detail: out.preferred_project_types?.length
+                    ? `Criteria: ${out.preferred_project_types.join(', ')} projects · max €${Number(out.max_price_eur || 0).toFixed(0)}/t · vintage ≥${out.min_vintage_year || '—'}`
+                    : undefined,
+                time,
+            };
         case 'Budget check passed':
             return { tag: 'MATCH', text: `Budget verified — €${Number(out.remaining_eur || 0).toLocaleString()} available this cycle.`, time };
         case 'Monthly budget exhausted':
             return { tag: 'HOLD', text: `Budget exhausted. €${Number(out.remaining_eur || 0).toFixed(0)} remaining. Pausing until next cycle.`, time };
         case 'Starting Gemini listing analysis':
-            return { tag: 'SCAN', text: 'Cross-referencing listings against buyer criteria via AI analysis...', time };
+            return { tag: 'SCAN', text: 'Cross-referencing listings against buyer criteria via Gemini AI...', detail: `Model: ${out.model || 'gemini-3-flash-preview'}`, time };
         case 'Gemini analysis complete':
-            if (out.action === 'skip') return { tag: 'HOLD', text: 'Analysis complete. No listings meet quality threshold this cycle.', time };
-            if (out.action === 'propose') return { tag: 'ALERT', text: `Match found — €${Number(out.total_cost_eur || 0).toFixed(2)} for ${out.quantity_tonnes || '?'}t. Awaiting approval.`, time };
-            return { tag: 'MATCH', text: `Analysis complete. Best match identified at €${Number(out.total_cost_eur || 0).toFixed(2)}.`, time };
+            if (out.action === 'skip') return {
+                tag: 'HOLD',
+                text: 'Analysis complete. No listings meet quality threshold this cycle.',
+                detail: out.rationale ? String(out.rationale).slice(0, 180) : undefined,
+                time,
+            };
+            if (out.action === 'propose') return {
+                tag: 'ALERT',
+                text: `Match found — €${Number(out.total_cost_eur || 0).toFixed(2)} for ${out.quantity_tonnes || '?'}t. Awaiting approval.`,
+                detail: out.rationale ? String(out.rationale).slice(0, 180) : undefined,
+                time,
+            };
+            return {
+                tag: 'MATCH',
+                text: `Analysis complete. Best match: ${out.quantity_tonnes || '?'}t at €${Number(out.total_cost_eur || 0).toFixed(2)}.`,
+                detail: out.rationale ? String(out.rationale).slice(0, 180) : undefined,
+                time,
+            };
         case 'Selected best match':
-            return { tag: 'MATCH', text: `Selected: ${out.project_name || 'Listing'} — ${out.quantity_tonnes || '?'}t at €${Number(out.price_per_tonne_eur || 0).toFixed(2)}/tCO₂e.`, time };
+            return {
+                tag: 'MATCH',
+                text: `Selected: ${out.project_name || 'Listing'} — ${out.quantity_tonnes || '?'}t at €${Number(out.price_per_tonne_eur || 0).toFixed(2)}/tCO₂e.`,
+                detail: out.score ? `Matching score: ${Number(out.score).toFixed(2)}` : undefined,
+                time,
+            };
         case 'Agent decided to skip':
-            return { tag: 'HOLD', text: out.rationale ? String(out.rationale).slice(0, 120) : 'No suitable listings found. Will retry next cycle.', time };
+            return { tag: 'HOLD', text: out.rationale ? String(out.rationale).slice(0, 160) : 'No suitable listings found. Will retry next cycle.', time };
         case 'Proposed for buyer approval (above auto-approve threshold)':
-            return { tag: 'ALERT', text: `€${Number(out.total_cost_eur || 0).toFixed(2)} exceeds auto-approve limit. Awaiting your decision.`, time };
+            return {
+                tag: 'ALERT',
+                text: `€${Number(out.total_cost_eur || 0).toFixed(2)} exceeds auto-approve limit (€${Number(out.auto_approve_under_eur || 0).toFixed(0)}). Awaiting your decision.`,
+                detail: out.rationale ? String(out.rationale).slice(0, 180) : undefined,
+                time,
+            };
         case 'Created order and executed payment':
-            return { tag: 'BUY', text: `Order executed — ${out.quantity_tonnes || '?'}t purchased for €${Number(out.total_eur || 0).toFixed(2)}.`, time };
+            return {
+                tag: 'PAY',
+                text: `Order executed — ${out.quantity_tonnes || '?'}t purchased for €${Number(out.total_eur || 0).toFixed(2)}.`,
+                detail: out.payment_mode === 'stripe'
+                    ? `Stripe payment confirmed · ${out.payment_intent_id}`
+                    : out.payment_mode === 'mock'
+                    ? 'Mock payment (Stripe not configured)'
+                    : undefined,
+                time,
+            };
         case 'Agent run completed successfully':
-            return { tag: 'DONE', text: 'Agent run completed successfully.', time };
+            return {
+                tag: 'DONE',
+                text: out.rationale ? String(out.rationale).slice(0, 160) : 'Agent run completed successfully.',
+                detail: [
+                    ...(out.key_strengths?.length ? [`Strengths: ${out.key_strengths.join(', ')}`] : []),
+                    ...(out.risks?.length ? [`Risks: ${out.risks.join(', ')}`] : []),
+                ].join(' · ') || undefined,
+                time,
+            };
         default:
             return { tag: 'SCAN', text: step.label, time };
     }
@@ -103,6 +153,7 @@ function getTagStyle(tag: StreamTag): string {
         case 'ALERT': return 'text-amber-300 bg-amber-500/15';
         case 'HOLD': return 'text-ember bg-ember/10';
         case 'BUY': return 'text-emerald-300 bg-emerald-500/20';
+        case 'PAY': return 'text-violet-300 bg-violet-500/15';
         case 'DONE': return 'text-sage bg-sage/15';
         default: return 'text-linen/40 bg-linen/5';
     }
@@ -387,6 +438,9 @@ export function AgentActivityPanel() {
                                                     </span>
                                                 </div>
                                                 <p className="text-xs leading-relaxed text-linen/75">{msg.text}</p>
+                                                {msg.detail && (
+                                                    <p className="text-[11px] leading-relaxed text-linen/40 mt-1 pl-2 border-l border-linen/10">{msg.detail}</p>
+                                                )}
                                             </div>
                                         ))}
 
@@ -501,13 +555,27 @@ export function AgentActivityPanel() {
                                 )}
                             </div>
 
-                            {/* Order confirmation */}
-                            {runDetail.order_id && (
-                                <div className="font-mono text-xs bg-emerald-500/10 px-4 py-3 rounded-xl border border-emerald-500/15 flex items-center gap-2">
-                                    <div className="w-2 h-2 rounded-full bg-emerald-400" />
-                                    <span className="text-emerald-300/80">Order placed successfully</span>
-                                </div>
-                            )}
+                            {/* Order confirmation with payment info */}
+                            {runDetail.order_id && (() => {
+                                const payStep = runDetail.trace_steps?.find(s => s.label === 'Created order and executed payment');
+                                const payOut = payStep?.output && typeof payStep.output === 'object' ? payStep.output : null;
+                                const isStripe = payOut?.payment_mode === 'stripe';
+                                return (
+                                    <div className={`font-mono text-xs px-4 py-3 rounded-xl border flex flex-col gap-1.5 ${
+                                        isStripe ? 'bg-violet-500/10 border-violet-500/15' : 'bg-emerald-500/10 border-emerald-500/15'
+                                    }`}>
+                                        <div className="flex items-center gap-2">
+                                            <div className={`w-2 h-2 rounded-full ${isStripe ? 'bg-violet-400' : 'bg-emerald-400'}`} />
+                                            <span className={isStripe ? 'text-violet-300/80' : 'text-emerald-300/80'}>
+                                                Order placed {isStripe ? 'via Stripe' : 'successfully'}
+                                            </span>
+                                        </div>
+                                        {isStripe && payOut?.payment_intent_id && (
+                                            <span className="text-[10px] text-violet-300/40 pl-4 truncate">{payOut.payment_intent_id}</span>
+                                        )}
+                                    </div>
+                                );
+                            })()}
 
                             {/* Error */}
                             {runDetail.status === 'failed' && runDetail.error_message && (
