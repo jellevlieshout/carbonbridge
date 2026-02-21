@@ -6,6 +6,9 @@ This project runs in a Polytope-orchestrated environment. Polytope manages Docke
 - **Polytope**: Orchestrates Docker containers.
 - **MCP Server**: When running `pt run stack --mcp`, the coding agent can access container information and execute commands through the Polytope MCP server.
 - **Executing Commands**: Running commands (build, test, etc.) should ideally happen through the MCP `mcp_polytope_exec` tool within the relevant container.
+  - **IMPORTANT**: For frontend (`web-app`) commands, `npm` is not available. You MUST use `bun` (e.g. `bun install`, `bun run typecheck`, etc).
+- **Accessing the App**: When running locally, the application should be accessed via Kong at `http://localhost:8000`, NOT the direct `web-app` port.
+  - To log in, use the test credentials: Username: `jelle`, Password: `jelle`.
 - **Hot-Reloading**: Most changes are hot-reloaded (except for `polytope.yml` and environment variables).
 - **Restarting**: If you modify `polytope.yml` or `.env` files, ask the user to restart Polytope.
 

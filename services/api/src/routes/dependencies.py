@@ -57,11 +57,24 @@ async def require_admin(user: dict = Depends(current_user_get)):
     roles = user.get("roles", [])
     if isinstance(roles, str):
         roles = [roles]
-        
+
     if "admin" not in roles:
         logger.warning(f"User {user.get('sub')} attempted admin access without 'admin' role. Roles: {roles}")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin privileges required"
+        )
+    return user
+
+
+async def require_authenticated(user: dict = Depends(current_user_get)):
+    """
+    Dependency to ensure the user is authenticated.
+    Any logged-in user has buyer/seller privileges.
+    """
+    if not user.get("sub"):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required"
         )
     return user
