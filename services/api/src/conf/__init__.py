@@ -1,5 +1,4 @@
 from pydantic import BaseModel
-
 from utils import auth, env, log
 from utils.env import EnvVarSpec
 
@@ -9,6 +8,7 @@ logger = log.get_logger(__name__)
 USE_AUTH = True
 
 #### Types ####
+
 
 class HttpServerConf(BaseModel):
     host: str
@@ -57,27 +57,26 @@ HTTP_EXPOSE_ERRORS = EnvVarSpec(
 ## When added, it creates src/conf/twilio.py with env var definitions.
 
 
-
 #### Validation ####
-VALIDATED_ENV_VARS = [
-    HTTP_AUTORELOAD,
-    HTTP_EXPOSE_ERRORS,
-    HTTP_PORT,
-    LOG_LEVEL
-]
+VALIDATED_ENV_VARS = [HTTP_AUTORELOAD, HTTP_EXPOSE_ERRORS, HTTP_PORT, LOG_LEVEL]
 
 # Only validate auth vars if USE_AUTH is True
 if USE_AUTH:
-    VALIDATED_ENV_VARS.extend([
-        AUTH_OIDC_JWK_URL,
-        AUTH_OIDC_AUDIENCE,
-        AUTH_OIDC_ISSUER,
-    ])
+    VALIDATED_ENV_VARS.extend(
+        [
+            AUTH_OIDC_JWK_URL,
+            AUTH_OIDC_AUDIENCE,
+            AUTH_OIDC_ISSUER,
+        ]
+    )
+
 
 def validate() -> bool:
     return env.validate(VALIDATED_ENV_VARS)
 
+
 #### Getters ####
+
 
 def get_auth_config() -> auth.AuthClientConfig:
     """Get authentication configuration."""
@@ -87,11 +86,14 @@ def get_auth_config() -> auth.AuthClientConfig:
         issuer=env.parse(AUTH_OIDC_ISSUER),
     )
 
+
 def get_http_expose_errors() -> str:
     return env.parse(HTTP_EXPOSE_ERRORS)
 
+
 def get_log_level() -> str:
     return env.parse(LOG_LEVEL)
+
 
 def get_http_conf() -> HttpServerConf:
     return HttpServerConf(

@@ -1,9 +1,9 @@
-from fastapi import APIRouter, Request, HTTPException, Query, Depends
-
+from fastapi import APIRouter
 from utils import log
-from .users import router as users_router
-from .listings import router as listings_router
+
 from .internal import router as internal_router
+from .listings import router as listings_router
+from .users import router as users_router
 from .wizard import router as wizard_router
 
 logger = log.get_logger(__name__)
@@ -19,5 +19,6 @@ router.include_router(wizard_router)
 async def route_seed():
     """Populate the database with fake seed data (dev only)."""
     from seed import run_seed
+
     counts = await run_seed()
     return {"status": "ok", "seeded": counts}

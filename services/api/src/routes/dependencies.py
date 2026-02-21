@@ -49,6 +49,18 @@ async def current_user_get(request: Request, token: HTTPAuthorizationCredentials
 
     raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="No auth_client")
 
+async def require_seller(user: dict = Depends(current_user_get)):
+    """Dependency to ensure the user has the 'seller' role."""
+    db_user = user.get("db_user")
+    role = db_user.data.role if db_user else None
+    if role != "seller":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Seller account required",
+        )
+    return user
+
+
 async def require_admin(user: dict = Depends(current_user_get)):
     """
     Dependency to ensure the user has the 'admin' role.
