@@ -51,6 +51,13 @@ export async function post(path: string, data?: any): Promise<any> {
 }
 
 /*
+ * Update data on the API
+ */
+export async function put(path: string, data?: any): Promise<any> {
+    return await fetchApi('PUT', path, data);
+}
+
+/*
  * Delete data from the API
  */
 export async function del(path: string, data?: any): Promise<any> {
