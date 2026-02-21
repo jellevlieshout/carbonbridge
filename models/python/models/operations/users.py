@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Literal, Optional
 from models.entities.couchbase.users import User, UserData, BuyerProfile
 
 
@@ -30,7 +30,7 @@ async def user_get_by_email(email: str) -> Optional[User]:
     return None
 
 
-async def user_register(email: str, hashed_password: str, role: str, **kwargs) -> User:
+async def user_register(email: str, hashed_password: str, role: Literal["buyer", "seller", "admin"], **kwargs) -> User:
     data = UserData(
         email=email,
         hashed_password=hashed_password,

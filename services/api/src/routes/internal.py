@@ -237,28 +237,28 @@ async def internal_search_listings(
     if body.co_benefits:
         requested = set(b.lower() for b in body.co_benefits)
         results = [
-            l for l in results
-            if requested & set(b.lower() for b in l.data.co_benefits)
+            item for item in results
+            if requested & set(b.lower() for b in item.data.co_benefits)
         ]
 
     listings = [
         ListingResult(
-            id=l.id,
-            seller_id=l.data.seller_id,
-            registry_name=l.data.registry_name,
-            project_name=l.data.project_name,
-            project_type=l.data.project_type,
-            project_country=l.data.project_country,
-            vintage_year=l.data.vintage_year,
-            quantity_available=l.data.quantity_tonnes - l.data.quantity_reserved - l.data.quantity_sold,
-            price_per_tonne_eur=l.data.price_per_tonne_eur,
-            methodology=l.data.methodology,
-            co_benefits=l.data.co_benefits,
-            description=l.data.description,
-            verification_status=l.data.verification_status,
-            status=l.data.status,
+            id=item.id,
+            seller_id=item.data.seller_id,
+            registry_name=item.data.registry_name,
+            project_name=item.data.project_name,
+            project_type=item.data.project_type,
+            project_country=item.data.project_country,
+            vintage_year=item.data.vintage_year,
+            quantity_available=item.data.quantity_tonnes - item.data.quantity_reserved - item.data.quantity_sold,
+            price_per_tonne_eur=item.data.price_per_tonne_eur,
+            methodology=item.data.methodology,
+            co_benefits=item.data.co_benefits,
+            description=item.data.description,
+            verification_status=item.data.verification_status,
+            status=item.data.status,
         )
-        for l in results
+        for item in results
     ]
 
     return ListingSearchResponse(listings=listings, total=len(listings))
@@ -405,6 +405,8 @@ async def internal_execute_payment(
         await order_set_payment_intent(order_id, body.stripe_payment_intent_id)
 
     updated = await order_update_status(order_id, "confirmed")
+    if not updated:
+        raise HTTPException(status_code=500, detail="Failed to confirm order")
     return PaymentResponse(
         order_id=order_id,
         status=updated.data.status,

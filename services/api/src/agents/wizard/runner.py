@@ -16,7 +16,9 @@ Responsibilities:
 from __future__ import annotations
 
 import asyncio
-from typing import Any, AsyncGenerator, Dict, Optional
+from typing import Any, AsyncGenerator, Dict, Optional, cast
+
+from models.entities.couchbase.wizard_sessions import WizardStep
 
 from models.operations.wizard_sessions import (
     wizard_session_add_message,
@@ -132,7 +134,7 @@ async def run_wizard_turn(
         await wizard_session_add_message(session_id, "assistant", full_response)
 
         if step_advanced and new_step:
-            await wizard_session_update_step(session_id, new_step)
+            await wizard_session_update_step(session_id, cast(WizardStep, new_step))
 
         new_prefs = final_state.get("extracted_preferences")
         if new_prefs:

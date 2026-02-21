@@ -92,8 +92,10 @@ logger.info(f"Starting API on port {http_conf.port}")
 # Log all registered routes to help debug routing issues
 logger.info("--- Registered Routes ---")
 for route in app.routes:
-    methods = ", ".join(route.methods) if hasattr(route, "methods") else "Any"
-    logger.info(f"{route.path} [{methods}]")
+    methods_set = getattr(route, "methods", None)
+    methods = ", ".join(methods_set) if methods_set else "Any"
+    path = getattr(route, "path", "<unknown>")
+    logger.info(f"{path} [{methods}]")
 logger.info("-------------------------")
 
 if __name__ == "__main__":

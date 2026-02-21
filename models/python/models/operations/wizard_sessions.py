@@ -2,6 +2,7 @@ from typing import Any, Dict, List, Optional
 from datetime import datetime, timezone
 from models.entities.couchbase.wizard_sessions import (
     WizardSession, WizardSessionData, ConversationMessage, ExtractedPreferences,
+    WizardStep,
 )
 
 
@@ -51,7 +52,7 @@ async def wizard_session_add_message(
 
 
 async def wizard_session_update_step(
-    session_id: str, step: str,
+    session_id: str, step: WizardStep,
 ) -> Optional[WizardSession]:
     session = await WizardSession.get(session_id)
     if not session:

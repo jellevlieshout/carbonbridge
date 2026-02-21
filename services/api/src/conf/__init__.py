@@ -101,7 +101,7 @@ def get_auth_config() -> auth.AuthClientConfig:
     )
 
 
-def get_http_expose_errors() -> str:
+def get_http_expose_errors() -> bool:
     return env.parse(HTTP_EXPOSE_ERRORS)
 
 

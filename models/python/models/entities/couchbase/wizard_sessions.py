@@ -3,6 +3,12 @@ from datetime import datetime
 from pydantic import BaseModel
 from clients.couchbase import BaseModelCouchbase, BaseCouchbaseEntityData
 
+WizardStep = Literal[
+    "profile_check", "onboarding", "footprint_estimate",
+    "preference_elicitation", "listing_search",
+    "recommendation", "order_creation"
+]
+
 
 class ConversationMessage(BaseModel):
     role: str
@@ -19,11 +25,7 @@ class ExtractedPreferences(BaseModel):
 
 class WizardSessionData(BaseCouchbaseEntityData):
     buyer_id: str
-    current_step: Literal[
-        "profile_check", "onboarding", "footprint_estimate",
-        "preference_elicitation", "listing_search",
-        "recommendation", "order_creation"
-    ] = "profile_check"
+    current_step: WizardStep = "profile_check"
     conversation_history: List[ConversationMessage] = []
     extracted_preferences: Optional[ExtractedPreferences] = None
     last_active_at: Optional[datetime] = None
