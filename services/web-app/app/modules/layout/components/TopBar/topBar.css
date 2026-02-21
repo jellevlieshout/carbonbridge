@@ -85,24 +85,3 @@
     background-color: #e9ecef;
 }
 
-.logo-light,
-.logo-dark {
-    height: 30px;
-    width: auto;
-}
-
-.logo-light {
-    display: block;
-}
-
-.logo-dark {
-    display: none;
-}
-
-html.dark .logo-light {
-    display: none;
-}
-
-html.dark .logo-dark {
-    display: block;
-}

@@ -1,7 +1,8 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { Link } from 'react-router';
 import './topBar.css';
-import { ThemeToggle } from "~/modules/theme/components/ThemeToggle"; // Import ThemeToggle
+import { ThemeToggle } from "~/modules/theme/components/ThemeToggle";
+import { Logo } from '~/modules/shared/components/Logo';
 
 interface TopBarProps {
     isLoggedIn: boolean;
@@ -31,8 +32,7 @@ export function TopBarView({ isLoggedIn, initials, onLogin, onLogout }: TopBarPr
         <div className="top-bar">
             <div className="top-bar-left">
                 <Link to="/" className="logo-link">
-                    <img src="/TODO" alt="TODO" className="logo-light" />
-                    <img src="/TODO" alt="TODO" className="logo-dark" />
+                    <Logo size="sm" />
                 </Link>
             </div>
             <div className="top-bar-right">

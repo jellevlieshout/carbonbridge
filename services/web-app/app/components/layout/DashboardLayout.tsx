@@ -3,7 +3,7 @@ import { Sidebar } from './Sidebar';
 import { Topbar } from './Topbar';
 import { Outlet } from 'react-router';
 
-export function DashboardLayout() {
+export default function DashboardLayout() {
     return (
         <div className="min-h-screen bg-linen selection:bg-ember/20 selection:text-slate">
             {/* Fixed Navigation Rail */}

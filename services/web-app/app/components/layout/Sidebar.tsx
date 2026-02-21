@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { LayoutDashboard, Leaf, ShoppingCart, Activity, FileText, Settings, Bot, Sparkles, List } from 'lucide-react';
 import { NavLink } from 'react-router';
+import { Logo } from '~/modules/shared/components/Logo';
 
 const navItems = [
     { label: 'Overview', icon: LayoutDashboard, href: '/buyer/dashboard' },
@@ -34,14 +35,14 @@ export function Sidebar() {
             <div className="relative z-10 flex flex-col h-full w-full overflow-hidden">
                 {/* Header / Logo */}
                 <div className="h-20 flex items-center px-6 shrink-0 font-semibold font-sans tracking-tight">
-                    <div className="flex items-center gap-4 text-linen whitespace-nowrap">
-                        <div className="w-8 h-8 rounded-lg bg-linen/10 flex items-center justify-center shrink-0">
+                    <NavLink to="/" className="flex items-center gap-4 text-linen whitespace-nowrap no-underline">
+                        <div className="w-8 h-8 rounded-lg bg-linen/10 flex items-center justify-center shrink-0 text-sm">
                             CB
                         </div>
-                        <span className={`text-xl transition-opacity duration-300 ${isHovered ? 'opacity-100' : 'opacity-0'}`}>
-                            CarbonBridge
+                        <span className={`transition-opacity duration-300 ${isHovered ? 'opacity-100' : 'opacity-0'}`}>
+                            <Logo size="sm" variant="light" />
                         </span>
-                    </div>
+                    </NavLink>
                 </div>
 
                 {/* Navigation */}
