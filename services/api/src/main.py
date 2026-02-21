@@ -77,7 +77,7 @@ async def lifespan(app: FastAPI):
     else:
         logger.warning("Authentication is disabled (set USE_AUTH to enable)")
 
-    # Initialize agent observability
+    # Initialize agent observability (LangSmith tracing via OTel)
     _init_observability()
     # Log agent availability
     logger.info("Autonomous buyer agent: Gemini (Pydantic AI) mode enabled")

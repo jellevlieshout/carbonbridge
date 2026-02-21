@@ -58,7 +58,7 @@ tools:
 
             - { name: GEMINI_API_KEY, value: pt.secret gemini-api }
             - { name: LANGSMITH_API_KEY, value: pt.secret langsmith-api-key }
-
+            - { name: LANGSMITH_PROJECT, value: carbonbridge }
           mounts:
             - { path: /root/.cache/, source: { type: volume, scope: project, id: api-dependency-cache } }
             - { path: /clients/python, source: { type: repo, path: /clients/python, repo: "#pt-clj pt/module-project-ref" } }
