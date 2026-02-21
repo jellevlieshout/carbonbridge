@@ -1,28 +1,64 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useMemo } from 'react';
+import { Link } from 'react-router';
 import gsap from 'gsap';
-import { Target, ListFilter, Wallet, Link, CheckCircle2 } from 'lucide-react';
+import { Target, ListFilter, Wallet, Link as LinkIcon, CheckCircle2 } from 'lucide-react';
+import { useUserResourcesQuery } from '~/modules/shared/queries/useUserResources';
+import { useOrdersQuery } from '~/modules/shared/queries/useOrders';
 
-const steps = [
-    { id: 1, label: 'Emissions Baseline Set', icon: Target, status: 'completed' },
-    { id: 2, label: 'Credit Type Selected', icon: ListFilter, status: 'completed' },
-    { id: 3, label: 'Budget Confirmed', icon: Wallet, status: 'completed' },
-    { id: 4, label: 'Registry Account Linked', icon: Link, status: 'current' },
-    { id: 5, label: 'First Purchase Complete', icon: CheckCircle2, status: 'pending' },
+const stepDefinitions = [
+    { id: 1, label: 'Emissions Baseline Set', icon: Target },
+    { id: 2, label: 'Credit Type Selected', icon: ListFilter },
+    { id: 3, label: 'Budget Confirmed', icon: Wallet },
+    { id: 4, label: 'Registry Account Linked', icon: LinkIcon },
+    { id: 5, label: 'First Purchase Complete', icon: CheckCircle2 },
 ];
 
 export function WizardProgressTile() {
     const containerRef = useRef<HTMLDivElement>(null);
+    const { data: userData, isLoading: isUserLoading } = useUserResourcesQuery();
+    const { data: orders, isLoading: isOrdersLoading } = useOrdersQuery();
+
+    const isLoading = isUserLoading || isOrdersLoading;
+
+    const steps = useMemo(() => {
+        const user = userData?.user;
+        const bp = user?.buyer_profile;
+
+        const completions = [
+            bp?.annual_co2_tonnes_estimate != null,
+            (bp?.preferred_project_types?.length ?? 0) > 0,
+            bp?.budget_per_tonne_max_eur != null,
+            user?.stripe_customer_id != null,
+            (orders ?? []).some((o: any) => o.status === 'completed'),
+        ];
+
+        let foundCurrent = false;
+        return stepDefinitions.map((def, i) => {
+            let status: 'completed' | 'current' | 'pending';
+            if (completions[i] && !foundCurrent) {
+                status = 'completed';
+            } else if (!foundCurrent) {
+                status = 'current';
+                foundCurrent = true;
+            } else {
+                status = 'pending';
+            }
+            return { ...def, status };
+        });
+    }, [userData, orders]);
+
+    const completedCount = steps.filter(s => s.status === 'completed').length;
 
     useEffect(() => {
+        if (isLoading) return;
+
         const ctx = gsap.context(() => {
-            // Animate the SVG checkmarks drawing themselves
             gsap.fromTo(
                 ".svg-check-path",
                 { strokeDasharray: 100, strokeDashoffset: 100 },
                 { strokeDashoffset: 0, duration: 0.8, ease: "power2.out", stagger: 0.15, delay: 0.5 }
             );
 
-            // Animate the rows staggering in
             gsap.fromTo(
                 ".wizard-row",
                 { opacity: 0, x: -10 },
@@ -30,7 +66,7 @@ export function WizardProgressTile() {
             );
         }, containerRef);
         return () => ctx.revert();
-    }, []);
+    }, [isLoading]);
 
     return (
         <div
@@ -39,14 +75,13 @@ export function WizardProgressTile() {
         >
             <div className="flex items-center justify-between mb-6">
                 <h3 className="font-sans font-semibold text-slate tracking-tight">Onboarding Protocol Tracker</h3>
-                <span className="font-mono text-[10px] uppercase font-semibold text-canopy tracking-wider bg-canopy/10 px-2 py-1 rounded-[1rem]">3/5 Complete</span>
+                <span className="font-mono text-[10px] uppercase font-semibold text-canopy tracking-wider bg-canopy/10 px-2 py-1 rounded-[1rem]">{completedCount}/5 Complete</span>
             </div>
 
             <div className="flex-1 flex flex-col justify-between gap-1">
                 {steps.map((step) => {
                     const isCompleted = step.status === 'completed';
                     const isCurrent = step.status === 'current';
-                    const isPending = step.status === 'pending';
 
                     let rowClasses = "wizard-row flex items-center gap-4 p-3 rounded-xl transition-all duration-300 ";
 
@@ -74,9 +109,12 @@ export function WizardProgressTile() {
                                     {step.label}
                                 </span>
                                 {isCurrent && (
-                                    <button className="text-[10px] font-bold uppercase tracking-wider text-ember hover:text-ember/80 transition-colors uppercase cursor-pointer">
+                                    <Link
+                                        to="/buyer/wizard"
+                                        className="text-[10px] font-bold uppercase tracking-wider text-ember hover:text-ember/80 transition-colors cursor-pointer"
+                                    >
                                         Resume
-                                    </button>
+                                    </Link>
                                 )}
                             </div>
                         </div>
