@@ -325,6 +325,7 @@ dependencies = [
     { name = "httpx" },
     { name = "pydantic" },
     { name = "resonate-sdk" },
+    { name = "tigerbeetle" },
 ]
 
 [package.metadata]
@@ -333,6 +334,7 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "pydantic", specifier = ">=2.0.0" },
     { name = "resonate-sdk", specifier = ">=0.6.7" },
+    { name = "tigerbeetle", specifier = ">=0.16.27" },
 ]
 
 [[package]]
@@ -1395,6 +1397,14 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/15/b9/cc3017f9a9c9b6e27c5106cc10cc7904653c3eec0729793aec10479dd669/starlette-0.47.3.tar.gz", hash = "sha256:6bc94f839cc176c4858894f1f8908f0ab79dfec1a6b8402f6da9be26ebea52e9", size = 2584144, upload-time = "2025-08-24T13:36:42.122Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/ce/fd/901cfa59aaa5b30a99e16876f11abe38b59a1a2c51ffb3d7142bb6089069/starlette-0.47.3-py3-none-any.whl", hash = "sha256:89c0778ca62a76b826101e7c709e70680a1699ca7da6b44d38eb0a7e61fe4b51", size = 72991, upload-time = "2025-08-24T13:36:40.887Z" },
+]
+
+[[package]]
+name = "tigerbeetle"
+version = "0.16.73"
+source = { registry = "https://pypi.org/simple" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/61/c5/36df0a0727691bb1dc44313045f1d088de69e90fe646ec8bd5709ba90e37/tigerbeetle-0.16.73-py3-none-any.whl", hash = "sha256:e5fbb24273e53464e6a6457b8a7b6b1994392eb49478898ed907a3e72cbe42cb", size = 1604020, upload-time = "2026-02-16T12:35:43.71Z" },
 ]
 
 [[package]]
