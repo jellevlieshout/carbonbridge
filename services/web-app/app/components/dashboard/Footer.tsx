@@ -1,4 +1,5 @@
 import React from 'react';
+import { Link } from 'react-router';
 
 export function Footer() {
     return (
@@ -60,16 +61,16 @@ export function Footer() {
                 <div className="relative z-10 grid grid-cols-2 lg:grid-cols-3 gap-8 w-full md:w-auto text-sm">
                     <div className="flex flex-col gap-4">
                         <h4 className="font-serif italic text-lg text-linen/90 mb-2">Platform</h4>
-                        <a href="#" className="font-sans text-linen/50 hover:text-ember transition-colors">Transaction Archive</a>
-                        <a href="#" className="font-sans text-linen/50 hover:text-ember transition-colors">Carbon Accounting Export</a>
-                        <a href="#" className="font-sans text-linen/50 hover:text-ember transition-colors">Methodology Glossary</a>
+                        <Link to="/platform/transactions" className="font-sans text-linen/50 hover:text-ember transition-colors">Transaction Archive</Link>
+                        <Link to="/platform/accounting" className="font-sans text-linen/50 hover:text-ember transition-colors">Carbon Accounting Export</Link>
+                        <Link to="/platform/glossary" className="font-sans text-linen/50 hover:text-ember transition-colors">Methodology Glossary</Link>
                     </div>
 
                     <div className="flex flex-col gap-4">
                         <h4 className="font-serif italic text-lg text-linen/90 mb-2">Trust</h4>
-                        <a href="#" className="font-sans text-linen/50 hover:text-ember transition-colors">Registry Documents</a>
-                        <a href="#" className="font-sans text-linen/50 hover:text-ember transition-colors">Verification Standards</a>
-                        <a href="#" className="font-sans text-linen/50 hover:text-ember transition-colors">Support Center</a>
+                        <Link to="/trust/registry" className="font-sans text-linen/50 hover:text-ember transition-colors">Registry Documents</Link>
+                        <Link to="/trust/standards" className="font-sans text-linen/50 hover:text-ember transition-colors">Verification Standards</Link>
+                        <Link to="/trust/support" className="font-sans text-linen/50 hover:text-ember transition-colors">Support Center</Link>
                     </div>
                 </div>
             </footer>
