@@ -101,72 +101,99 @@ async def route_order_create(
 ):
     buyer_id = user["sub"]
 
+    # Auto-cancel any stale pending orders for this buyer
+    existing_orders = await order_get_by_buyer(buyer_id)
+    for existing in existing_orders:
+        if existing.data.status == "pending":
+            logger.info(f"Auto-cancelling stale pending order {existing.id}")
+            for li in existing.data.line_items:
+                await listing_reserve_quantity(li.listing_id, -li.quantity)
+            if existing.data.stripe_payment_intent_id:
+                try:
+                    s = _get_stripe()
+                    s.PaymentIntent.cancel(existing.data.stripe_payment_intent_id)
+                except Exception as e:
+                    logger.warning(f"Failed to cancel stale PaymentIntent: {e}")
+            await order_cancel(existing.id)
+
     built_items: List[OrderLineItem] = []
     total_eur = 0.0
+    reserved_items: list[tuple[str, float]] = []
 
-    for item in body.line_items:
-        listing = await listing_get(item.listing_id)
-        if not listing:
-            raise HTTPException(status_code=404, detail=f"Listing {item.listing_id} not found")
-        if listing.data.status != "active":
-            raise HTTPException(status_code=400, detail=f"Listing {item.listing_id} is not active")
+    try:
+        for item in body.line_items:
+            listing = await listing_get(item.listing_id)
+            if not listing:
+                raise HTTPException(status_code=404, detail=f"Listing {item.listing_id} not found")
+            if listing.data.status != "active":
+                raise HTTPException(status_code=400, detail=f"Listing {item.listing_id} is not active")
 
-        available = listing.data.quantity_tonnes - listing.data.quantity_reserved - listing.data.quantity_sold
-        if item.quantity > available:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Listing {item.listing_id}: requested {item.quantity}t but only {available}t available",
+            available = listing.data.quantity_tonnes - listing.data.quantity_reserved - listing.data.quantity_sold
+            if item.quantity > available:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Listing {item.listing_id}: requested {item.quantity}t but only {available}t available",
+                )
+
+            reserved = await listing_reserve_quantity(item.listing_id, item.quantity)
+            if not reserved:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Could not reserve {item.quantity}t on listing {item.listing_id}",
+                )
+            reserved_items.append((item.listing_id, item.quantity))
+
+            subtotal = round(item.quantity * listing.data.price_per_tonne_eur, 2)
+            total_eur += subtotal
+            built_items.append(OrderLineItem(
+                listing_id=item.listing_id,
+                quantity=item.quantity,
+                price_per_tonne=listing.data.price_per_tonne_eur,
+                subtotal=subtotal,
+            ))
+
+        total_eur = round(total_eur, 2)
+
+        # Create order in Couchbase
+        order = await order_create(buyer_id, built_items, total_eur)
+
+        # Set retirement flag
+        if body.retirement_requested:
+            order.data.retirement_requested = True
+            from models.entities.couchbase.orders import Order
+            await Order.update(order)
+
+        # Create Stripe PaymentIntent or use mock
+        client_secret = None
+        if _stripe_configured():
+            s = _get_stripe()
+            intent = s.PaymentIntent.create(
+                amount=int(total_eur * 100),  # Stripe uses cents
+                currency="eur",
+                metadata={
+                    "carbonbridge_order_id": order.id,
+                    "buyer_id": buyer_id,
+                },
             )
+            await order_set_payment_intent(order.id, intent.id)
+            order.data.stripe_payment_intent_id = intent.id
+            client_secret = intent.client_secret
+        else:
+            # Mock mode: generate a fake intent ID
+            mock_id = f"pi_mock_{hashlib.sha256(order.id.encode()).hexdigest()[:16]}"
+            await order_set_payment_intent(order.id, mock_id)
+            order.data.stripe_payment_intent_id = mock_id
+            client_secret = f"mock_secret_{mock_id}"
+            logger.info(f"Mock mode: order {order.id} using fake intent {mock_id}")
 
-        reserved = await listing_reserve_quantity(item.listing_id, item.quantity)
-        if not reserved:
-            raise HTTPException(
-                status_code=409,
-                detail=f"Could not reserve {item.quantity}t on listing {item.listing_id}",
-            )
-
-        subtotal = round(item.quantity * listing.data.price_per_tonne_eur, 2)
-        total_eur += subtotal
-        built_items.append(OrderLineItem(
-            listing_id=item.listing_id,
-            quantity=item.quantity,
-            price_per_tonne=listing.data.price_per_tonne_eur,
-            subtotal=subtotal,
-        ))
-
-    total_eur = round(total_eur, 2)
-
-    # Create order in Couchbase
-    order = await order_create(buyer_id, built_items, total_eur)
-
-    # Set retirement flag
-    if body.retirement_requested:
-        order.data.retirement_requested = True
-        from models.entities.couchbase.orders import Order
-        await Order.update(order)
-
-    # Create Stripe PaymentIntent or use mock
-    client_secret = None
-    if _stripe_configured():
-        s = _get_stripe()
-        intent = s.PaymentIntent.create(
-            amount=int(total_eur * 100),  # Stripe uses cents
-            currency="eur",
-            metadata={
-                "carbonbridge_order_id": order.id,
-                "buyer_id": buyer_id,
-            },
-        )
-        await order_set_payment_intent(order.id, intent.id)
-        order.data.stripe_payment_intent_id = intent.id
-        client_secret = intent.client_secret
-    else:
-        # Mock mode: generate a fake intent ID
-        mock_id = f"pi_mock_{hashlib.sha256(order.id.encode()).hexdigest()[:16]}"
-        await order_set_payment_intent(order.id, mock_id)
-        order.data.stripe_payment_intent_id = mock_id
-        client_secret = f"mock_secret_{mock_id}"
-        logger.info(f"Mock mode: order {order.id} using fake intent {mock_id}")
+    except Exception:
+        # Release all reservations made so far
+        for listing_id, qty in reserved_items:
+            try:
+                await listing_reserve_quantity(listing_id, -qty)
+            except Exception as rollback_err:
+                logger.error(f"Failed to rollback reservation on {listing_id}: {rollback_err}")
+        raise
 
     return _order_to_response(order, client_secret=client_secret)
 

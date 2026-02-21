@@ -84,7 +84,8 @@ export default function OnboardingPage() {
 
     const mutation = useMutation({
         mutationFn: userOnboardingSubmit,
-        onSuccess: async () => {
+        onSuccess: async (data) => {
+            queryClient.setQueryData(['userResources'], data);
             await queryClient.invalidateQueries({ queryKey: ['userResources'] });
             if (role === 'buyer') {
                 navigate('/buyer/dashboard', { replace: true });
@@ -146,9 +147,8 @@ export default function OnboardingPage() {
                     {[0, 1, ...(role === 'buyer' ? [2] : [])].map((s) => (
                         <div
                             key={s}
-                            className={`h-1.5 rounded-full transition-all duration-500 ${
-                                s === step ? 'w-8 bg-canopy' : s < step ? 'w-8 bg-canopy/40' : 'w-8 bg-slate/15'
-                            }`}
+                            className={`h-1.5 rounded-full transition-all duration-500 ${s === step ? 'w-8 bg-canopy' : s < step ? 'w-8 bg-canopy/40' : 'w-8 bg-slate/15'
+                                }`}
                         />
                     ))}
                 </div>
@@ -168,15 +168,13 @@ export default function OnboardingPage() {
                             <div className="grid grid-cols-2 gap-4 mt-8">
                                 <button
                                     onClick={() => setRole('buyer')}
-                                    className={`group relative flex flex-col items-center gap-4 p-8 rounded-xl border-2 transition-all cursor-pointer bg-transparent ${
-                                        role === 'buyer'
+                                    className={`group relative flex flex-col items-center gap-4 p-8 rounded-xl border-2 transition-all cursor-pointer bg-transparent ${role === 'buyer'
                                             ? 'border-canopy bg-canopy/5'
                                             : 'border-mist hover:border-canopy/30'
-                                    }`}
+                                        }`}
                                 >
-                                    <div className={`w-16 h-16 rounded-2xl flex items-center justify-center transition-colors ${
-                                        role === 'buyer' ? 'bg-canopy text-linen' : 'bg-mist/50 text-slate/50 group-hover:bg-canopy/10 group-hover:text-canopy'
-                                    }`}>
+                                    <div className={`w-16 h-16 rounded-2xl flex items-center justify-center transition-colors ${role === 'buyer' ? 'bg-canopy text-linen' : 'bg-mist/50 text-slate/50 group-hover:bg-canopy/10 group-hover:text-canopy'
+                                        }`}>
                                         <ShoppingCart size={28} strokeWidth={1.5} />
                                     </div>
                                     <div className="text-center">
@@ -189,15 +187,13 @@ export default function OnboardingPage() {
 
                                 <button
                                     onClick={() => setRole('seller')}
-                                    className={`group relative flex flex-col items-center gap-4 p-8 rounded-xl border-2 transition-all cursor-pointer bg-transparent ${
-                                        role === 'seller'
+                                    className={`group relative flex flex-col items-center gap-4 p-8 rounded-xl border-2 transition-all cursor-pointer bg-transparent ${role === 'seller'
                                             ? 'border-canopy bg-canopy/5'
                                             : 'border-mist hover:border-canopy/30'
-                                    }`}
+                                        }`}
                                 >
-                                    <div className={`w-16 h-16 rounded-2xl flex items-center justify-center transition-colors ${
-                                        role === 'seller' ? 'bg-canopy text-linen' : 'bg-mist/50 text-slate/50 group-hover:bg-canopy/10 group-hover:text-canopy'
-                                    }`}>
+                                    <div className={`w-16 h-16 rounded-2xl flex items-center justify-center transition-colors ${role === 'seller' ? 'bg-canopy text-linen' : 'bg-mist/50 text-slate/50 group-hover:bg-canopy/10 group-hover:text-canopy'
+                                        }`}>
                                         <Leaf size={28} strokeWidth={1.5} />
                                     </div>
                                     <div className="text-center">
@@ -324,11 +320,10 @@ export default function OnboardingPage() {
                                             <button
                                                 key={m.value}
                                                 onClick={() => setMotivation(m.value)}
-                                                className={`text-left p-3 rounded-lg border transition-all cursor-pointer bg-transparent ${
-                                                    motivation === m.value
+                                                className={`text-left p-3 rounded-lg border transition-all cursor-pointer bg-transparent ${motivation === m.value
                                                         ? 'border-canopy bg-canopy/5'
                                                         : 'border-mist hover:border-canopy/30'
-                                                }`}
+                                                    }`}
                                             >
                                                 <span className="text-sm font-medium text-slate block">{m.label}</span>
                                                 <span className="text-xs text-slate/40 mt-0.5 block">{m.desc}</span>
@@ -350,11 +345,10 @@ export default function OnboardingPage() {
                                                 <button
                                                     key={pt.value}
                                                     onClick={() => toggleProjectType(pt.value)}
-                                                    className={`flex items-center gap-2 px-3 py-2 rounded-full text-xs font-medium border transition-all cursor-pointer bg-transparent ${
-                                                        active
+                                                    className={`flex items-center gap-2 px-3 py-2 rounded-full text-xs font-medium border transition-all cursor-pointer bg-transparent ${active
                                                             ? 'border-canopy bg-canopy/10 text-canopy'
                                                             : 'border-mist text-slate/50 hover:border-canopy/30 hover:text-slate'
-                                                    }`}
+                                                        }`}
                                                 >
                                                     <Icon size={14} />
                                                     {pt.label}

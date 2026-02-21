@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Bell, Plus, LogOut } from 'lucide-react';
+import { Bell, LogOut } from 'lucide-react';
 import { useAuth } from '@clients/api/modules/phantom-token-handler-secured-api-client/AuthContext';
 import { logout } from '@clients/api/client';
 import { ErrorRenderer } from '@clients/api/modules/phantom-token-handler-secured-api-client/utilities/errorRenderer';
@@ -99,12 +99,7 @@ export function Topbar() {
                     <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-ember rounded-full border-2 border-white" />
                 </button>
 
-                {/* New Transaction Button */}
-                <button className="magnetic-btn h-10 px-5 rounded-full bg-slate text-linen font-medium text-sm flex items-center gap-2 group cursor-pointer border-0">
-                    <div className="magnetic-bg bg-ember" />
-                    <Plus size={16} strokeWidth={2} className="relative z-10" />
-                    <span className="relative z-10">New Transaction</span>
-                </button>
+
 
                 {/* Profile Dropdown */}
                 <div ref={dropdownRef} className="relative">

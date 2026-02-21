@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Button } from "~/modules/shared/ui/button";
 import { Input } from "~/modules/shared/ui/input";
 import { Label } from "~/modules/shared/ui/label";
-import { useCreateOrder } from "~/modules/shared/queries/useOrders";
+import { useCreateOrder, useCancelOrder } from "~/modules/shared/queries/useOrders";
 import { CheckoutForm } from "./CheckoutForm";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
@@ -35,14 +35,17 @@ export function CheckoutModal({
     const navigate = useNavigate();
     const [quantity, setQuantity] = useState<number>(1);
     const [clientSecret, setClientSecret] = useState<string | null>(null);
+    const [orderId, setOrderId] = useState<string | null>(null);
 
     const createOrderMutation = useCreateOrder();
+    const cancelOrderMutation = useCancelOrder();
 
     // Reset state when modal opens
     useEffect(() => {
         if (isOpen) {
             setQuantity(1);
             setClientSecret(null);
+            setOrderId(null);
         }
     }, [isOpen]);
 
@@ -58,6 +61,7 @@ export function CheckoutModal({
                 retirement_requested: false // Defaulting to false for simple buy, can be enhanced later
             });
 
+            setOrderId(order.id);
             if (order.stripe_client_secret) {
                 setClientSecret(order.stripe_client_secret);
             } else {
@@ -69,15 +73,23 @@ export function CheckoutModal({
     };
 
     const handlePaymentSuccess = () => {
+        setOrderId(null);
         toast.success("Payment successful!");
         onClose();
         navigate("/buyer-credits");
     };
 
+    const handleClose = () => {
+        if (orderId) {
+            cancelOrderMutation.mutate(orderId);
+        }
+        onClose();
+    };
+
     const totalCost = (quantity * pricePerTonne).toFixed(2);
 
     return (
-        <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+        <Dialog open={isOpen} onOpenChange={(open) => !open && handleClose()}>
             <DialogContent className="sm:max-w-[425px]">
                 <DialogHeader>
                     <DialogTitle>Complete Purchase</DialogTitle>

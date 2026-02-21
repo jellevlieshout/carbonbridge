@@ -37,3 +37,7 @@ export async function orderGetById(id: string): Promise<Order> {
 export async function orderCreate(req: CreateOrderRequest): Promise<Order> {
     return await post('/orders/', req);
 }
+
+export async function orderCancel(orderId: string): Promise<Order> {
+    return await post(`/orders/${orderId}/cancel`, {});
+}
