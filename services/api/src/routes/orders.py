@@ -1,16 +1,20 @@
+import asyncio
+import hashlib
 from typing import List, Optional
 
 import stripe
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
-from models.operations.listings import listing_get, listing_reserve_quantity
+from models.operations.listings import listing_get, listing_update, listing_reserve_quantity
 from models.operations.orders import (
     order_create,
     order_get,
     order_get_by_buyer,
     order_cancel,
     order_set_payment_intent,
+    order_update_status,
+    order_update_payment_status,
 )
 from models.entities.couchbase.orders import OrderLineItem
 from utils import env, log
@@ -23,6 +27,10 @@ router = APIRouter(prefix="/orders", tags=["orders"])
 STRIPE_SECRET_KEY = env.EnvVarSpec(
     id="STRIPE_SECRET_KEY", is_optional=True, is_secret=True
 )
+
+
+def _stripe_configured() -> bool:
+    return bool(env.parse(STRIPE_SECRET_KEY))
 
 
 def _get_stripe():
@@ -136,20 +144,28 @@ async def route_order_create(
         from models.entities.couchbase.orders import Order
         await Order.update(order)
 
-    # Create Stripe PaymentIntent
+    # Create Stripe PaymentIntent or use mock
     client_secret = None
-    s = _get_stripe()
-    intent = s.PaymentIntent.create(
-        amount=int(total_eur * 100),  # Stripe uses cents
-        currency="eur",
-        metadata={
-            "carbonbridge_order_id": order.id,
-            "buyer_id": buyer_id,
-        },
-    )
-    await order_set_payment_intent(order.id, intent.id)
-    order.data.stripe_payment_intent_id = intent.id
-    client_secret = intent.client_secret
+    if _stripe_configured():
+        s = _get_stripe()
+        intent = s.PaymentIntent.create(
+            amount=int(total_eur * 100),  # Stripe uses cents
+            currency="eur",
+            metadata={
+                "carbonbridge_order_id": order.id,
+                "buyer_id": buyer_id,
+            },
+        )
+        await order_set_payment_intent(order.id, intent.id)
+        order.data.stripe_payment_intent_id = intent.id
+        client_secret = intent.client_secret
+    else:
+        # Mock mode: generate a fake intent ID
+        mock_id = f"pi_mock_{hashlib.sha256(order.id.encode()).hexdigest()[:16]}"
+        await order_set_payment_intent(order.id, mock_id)
+        order.data.stripe_payment_intent_id = mock_id
+        client_secret = f"mock_secret_{mock_id}"
+        logger.info(f"Mock mode: order {order.id} using fake intent {mock_id}")
 
     return _order_to_response(order, client_secret=client_secret)
 
@@ -213,3 +229,46 @@ async def route_order_cancel(
 
     cancelled = await order_cancel(order_id)
     return _order_to_response(cancelled)
+
+
+# ---------------------------------------------------------------------------
+# POST /orders/{id}/mock-confirm — simulate payment success (dev only)
+# ---------------------------------------------------------------------------
+
+@router.post("/{order_id}/mock-confirm", response_model=OrderResponse)
+async def route_order_mock_confirm(
+    order_id: str,
+    user: dict = Depends(require_authenticated),
+):
+    """Simulate a successful payment after 2-3 seconds. Only works when Stripe is not configured."""
+    if _stripe_configured():
+        raise HTTPException(status_code=400, detail="Mock confirm disabled — Stripe is configured")
+
+    order = await order_get(order_id)
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    if order.data.buyer_id != user["sub"]:
+        raise HTTPException(status_code=403, detail="Not your order")
+    if order.data.status != "pending":
+        raise HTTPException(status_code=400, detail=f"Order is not pending (status: {order.data.status})")
+
+    # Simulate processing delay
+    await asyncio.sleep(2.5)
+
+    # Mark payment as succeeded
+    await order_update_payment_status(order.id, "succeeded")
+    await order_update_status(order.id, "completed")
+
+    # Move reserved → sold on each listing
+    for li in order.data.line_items:
+        listing = await listing_get(li.listing_id)
+        if listing:
+            listing.data.quantity_reserved -= li.quantity
+            listing.data.quantity_sold += li.quantity
+            if listing.data.quantity_sold >= listing.data.quantity_tonnes:
+                listing.data.status = "sold_out"
+            await listing_update(listing)
+
+    updated = await order_get(order_id)
+    logger.info(f"Mock payment confirmed for order {order_id}")
+    return _order_to_response(updated)
