@@ -1,4 +1,5 @@
 import { Link } from 'react-router';
+import { Logo } from '~/modules/shared/components/Logo';
 
 interface ErrorViewProps {
     message: string;
@@ -15,11 +16,9 @@ export function ErrorView({ message, details, showTryAgain = true }: ErrorViewPr
             }}
         >
             <div className="flex-1 flex flex-col items-center justify-center w-full max-w-md text-center">
-                <img
-                    src="/TODO"
-                    alt="TODO"
-                    className="h-16 md:h-24 w-auto mb-8"
-                />
+                <div className="mb-8">
+                    <Logo size="lg" variant="light" />
+                </div>
 
                 <h1 className="text-6xl font-bold text-white mb-4">{message}</h1>
                 <p className="text-xl text-white mb-8">{details}</p>

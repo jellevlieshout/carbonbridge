@@ -2,6 +2,7 @@ import React from 'react';
 import { startLogin } from '@clients/api/client';
 import { ErrorRenderer } from '@clients/api/modules/phantom-token-handler-secured-api-client/utilities/errorRenderer';
 import { Button } from '~/modules/shared/ui/button';
+import { Logo } from '~/modules/shared/components/Logo';
 
 export function SessionExpiredView() {
     async function handleLogin() {
@@ -21,11 +22,9 @@ export function SessionExpiredView() {
             }}
         >
             <div className="flex-1 flex flex-col items-center justify-center w-full max-w-md text-center">
-                <img
-                    src="/TODO"
-                    alt="TODO"
-                    className="h-16 md:h-24 w-auto mb-8"
-                />
+                <div className="mb-8">
+                    <Logo size="lg" variant="light" />
+                </div>
 
                 <h1 className="text-4xl font-bold text-white mb-4">Session Expired</h1>
                 <p className="text-xl text-white mb-8">Your session has timed out. Please log in again to continue.</p>
