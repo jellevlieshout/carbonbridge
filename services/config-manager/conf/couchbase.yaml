@@ -38,4 +38,11 @@ buckets:
       _default:
         collections:
           users: {}
-
+          listings: {}
+          orders: {}
+          registry_verifications: {}
+          offsets_db_projects: {}
+          agent_runs: {}
+          wizard_sessions: {}
+          market_insights: {}
+          sync_logs: {}
