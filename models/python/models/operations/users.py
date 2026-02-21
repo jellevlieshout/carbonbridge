@@ -42,6 +42,25 @@ async def user_register(email: str, hashed_password: str, role: str, **kwargs) -
     return await User.create(data)
 
 
+async def user_update_onboarding(user_id: str, data: dict) -> User:
+    user = await User.get(user_id)
+    if not user:
+        raise ValueError(f"User with ID {user_id} not found")
+
+    allowed_fields = {
+        "role", "company_name", "company_size_employees",
+        "sector", "country",
+    }
+    for key, value in data.items():
+        if key in allowed_fields:
+            setattr(user.data, key, value)
+
+    if "buyer_profile" in data and data["buyer_profile"]:
+        user.data.buyer_profile = BuyerProfile(**data["buyer_profile"])
+
+    return await User.update(user)
+
+
 async def user_update_buyer_profile(user_id: str, profile: BuyerProfile) -> User:
     user = await User.get(user_id)
     if not user:

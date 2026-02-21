@@ -1,4 +1,4 @@
-import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { listingsGet } from "@clients/api/listings";
 
 export const useListingsQuery = () => {
@@ -9,7 +9,7 @@ export const useListingsQuery = () => {
 };
 
 export const useListings = () => {
-    return useSuspenseQuery({
+    return useQuery({
         queryKey: ["listings"],
         queryFn: () => listingsGet()
     });

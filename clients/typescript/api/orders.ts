@@ -1,4 +1,4 @@
-import { get } from './client';
+import { get, post } from './client';
 
 export interface OrderLineItem {
     listing_id: string;
@@ -18,10 +18,26 @@ export interface Order {
     retirement_requested: boolean;
 }
 
+export interface CreateOrderRequest {
+    line_items: {
+        listing_id: string;
+        quantity: number;
+    }[];
+    retirement_requested?: boolean;
+}
+
 export async function ordersGetMine(): Promise<Order[]> {
     return await get('/orders/');
 }
 
 export async function orderGetById(id: string): Promise<Order> {
     return await get(`/orders/${id}`);
+}
+
+export async function orderCreate(req: CreateOrderRequest): Promise<Order> {
+    return await post('/orders/', req);
+}
+
+export async function orderCancel(orderId: string): Promise<Order> {
+    return await post(`/orders/${orderId}/cancel`, {});
 }

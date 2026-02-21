@@ -4,10 +4,39 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Badge } from "~/modules/shared/ui/badge";
 import { Button } from "~/modules/shared/ui/button";
 import { MapPin, Leaf, CalendarIcon } from "lucide-react";
+import { CheckoutModal } from "~/components/buyer/CheckoutModal";
 
 export default function MarketplacePage() {
-    const { data } = useListings();
+    const { data, isLoading, isError, error } = useListings();
     const listings = data?.listings || [];
+
+    const [checkoutListing, setCheckoutListing] = React.useState<any | null>(null);
+
+    if (isLoading) {
+        return (
+            <div className="flex flex-col items-center justify-center min-h-[400px]">
+                <div className="w-8 h-8 border-4 border-primary/30 border-t-primary rounded-full animate-spin mb-4" />
+                <p className="text-muted-foreground animate-pulse font-medium">Scanning marketplace...</p>
+            </div>
+        );
+    }
+
+    if (isError) {
+        return (
+            <div className="flex flex-col items-center justify-center min-h-[400px] border-2 border-dashed border-destructive/20 rounded-2xl bg-destructive/5 p-8 text-center">
+                <div className="w-12 h-12 rounded-full bg-destructive/10 flex items-center justify-center mb-4">
+                    <Leaf className="w-6 h-6 text-destructive rotate-180" />
+                </div>
+                <h3 className="text-lg font-semibold text-destructive mb-2">Connection Error</h3>
+                <p className="text-muted-foreground max-w-md mx-auto mb-6">
+                    {error instanceof Error ? error.message : "We're having trouble reaching the carbon registry. Please try again later."}
+                </p>
+                <Button variant="outline" onClick={() => window.location.reload()}>
+                    Retry Connection
+                </Button>
+            </div>
+        );
+    }
 
     return (
         <div className="flex flex-col gap-8 w-full animate-in fade-in duration-700 max-w-7xl mx-auto py-8">
@@ -91,7 +120,12 @@ export default function MarketplacePage() {
                                             <span className="text-base font-semibold text-foreground">{available} <span className="text-sm font-normal text-muted-foreground">tonnes</span></span>
                                         </div>
                                     </div>
-                                    <Button className="w-full font-semibold shadow-sm" variant="default" disabled={available <= 0}>
+                                    <Button
+                                        className="w-full font-semibold shadow-sm"
+                                        variant="default"
+                                        disabled={available <= 0}
+                                        onClick={() => setCheckoutListing(listing)}
+                                    >
                                         {available > 0 ? 'Buy Credits' : 'Sold Out'}
                                     </Button>
                                 </CardFooter>
@@ -99,6 +133,17 @@ export default function MarketplacePage() {
                         );
                     })}
                 </div>
+            )}
+
+            {checkoutListing && (
+                <CheckoutModal
+                    isOpen={true}
+                    onClose={() => setCheckoutListing(null)}
+                    listingId={checkoutListing.id}
+                    listingName={checkoutListing.project_name}
+                    pricePerTonne={checkoutListing.price_per_tonne_eur}
+                    availableTonnes={checkoutListing.quantity_tonnes - checkoutListing.quantity_reserved - checkoutListing.quantity_sold}
+                />
             )}
         </div>
     );

@@ -22,10 +22,28 @@ function ListingCell({ listingId }: { listingId: string }) {
 }
 
 export default function BuyerCreditsPage() {
-    const { data } = useOrders();
-    const orders = data || [];
+    const { data: orders, isLoading, isError, error } = useOrders();
 
-    const totalTonnesFetched = orders
+    if (isLoading) {
+        return (
+            <div className="flex flex-col items-center justify-center min-h-[400px]">
+                <div className="w-8 h-8 border-4 border-primary/30 border-t-primary rounded-full animate-spin mb-4" />
+                <p className="text-muted-foreground animate-pulse font-medium">Loading your credits...</p>
+            </div>
+        );
+    }
+
+    if (isError) {
+        return (
+            <div className="flex flex-col items-center justify-center min-h-[400px] text-center">
+                <Leaf className="w-12 h-12 text-destructive/20 mb-4" />
+                <h3 className="text-lg font-semibold text-foreground mb-2">Failed to load credits</h3>
+                <p className="text-muted-foreground">{error instanceof Error ? error.message : "An unexpected error occurred."}</p>
+            </div>
+        );
+    }
+
+    const totalTonnesFetched = (orders || [])
         .filter(o => o.status === "completed")
         .reduce((sum, o) => sum + o.line_items.reduce((lsum, li) => lsum + li.quantity, 0), 0);
 

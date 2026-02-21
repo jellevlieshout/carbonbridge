@@ -1,15 +1,16 @@
-import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { userDataGet } from "@clients/api/user";
 
-export const useUserResourcesQuery = () => {
+export const useUserResourcesQuery = (options?: { enabled?: boolean }) => {
     return useQuery({
         queryKey: ["userResources"],
-        queryFn: () => userDataGet()
+        queryFn: () => userDataGet(),
+        enabled: options?.enabled,
     });
 };
 
 export const useUserResources = () => {
-    return useSuspenseQuery({
+    return useQuery({
         queryKey: ["userResources"],
         queryFn: () => userDataGet()
     });
