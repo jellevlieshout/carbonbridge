@@ -6,8 +6,8 @@ import { HomePresenter } from "~/modules/home/presenters/HomePresenter";
 
 export function meta({ }: Route.MetaArgs) {
   return [
-    { title: "Smart SEB Lab" },
-    { name: "description", content: "Smart SEB Lab Application" },
+    { title: "CarbonBridge | Home" },
+    { name: "description", content: "CarbonBridge - Connecting Carbon Markets" },
   ];
 }
 

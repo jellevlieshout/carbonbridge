@@ -1,6 +1,14 @@
 import React from 'react';
 import { Link } from 'react-router';
 import { Logo } from '~/modules/shared/components/Logo';
+import type { Route } from "./+types/not-found";
+
+export function meta({ }: Route.MetaArgs) {
+    return [
+        { title: "CarbonBridge | Page Not Found" },
+        { name: "description", content: "The page you are looking for does not exist." },
+    ];
+}
 
 export default function NotFound() {
     return (

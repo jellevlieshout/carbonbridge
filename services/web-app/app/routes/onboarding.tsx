@@ -20,6 +20,14 @@ import {
     Wheat,
     Loader2,
 } from 'lucide-react';
+import type { Route } from "./+types/onboarding";
+
+export function meta({ }: Route.MetaArgs) {
+    return [
+        { title: "CarbonBridge | Onboarding" },
+        { name: "description", content: "Join CarbonBridge and start trading carbon credits." },
+    ];
+}
 
 const SECTORS = [
     'Manufacturing',
@@ -169,8 +177,8 @@ export default function OnboardingPage() {
                                 <button
                                     onClick={() => setRole('buyer')}
                                     className={`group relative flex flex-col items-center gap-4 p-8 rounded-xl border-2 transition-all cursor-pointer bg-transparent ${role === 'buyer'
-                                            ? 'border-canopy bg-canopy/5'
-                                            : 'border-mist hover:border-canopy/30'
+                                        ? 'border-canopy bg-canopy/5'
+                                        : 'border-mist hover:border-canopy/30'
                                         }`}
                                 >
                                     <div className={`w-16 h-16 rounded-2xl flex items-center justify-center transition-colors ${role === 'buyer' ? 'bg-canopy text-linen' : 'bg-mist/50 text-slate/50 group-hover:bg-canopy/10 group-hover:text-canopy'
@@ -188,8 +196,8 @@ export default function OnboardingPage() {
                                 <button
                                     onClick={() => setRole('seller')}
                                     className={`group relative flex flex-col items-center gap-4 p-8 rounded-xl border-2 transition-all cursor-pointer bg-transparent ${role === 'seller'
-                                            ? 'border-canopy bg-canopy/5'
-                                            : 'border-mist hover:border-canopy/30'
+                                        ? 'border-canopy bg-canopy/5'
+                                        : 'border-mist hover:border-canopy/30'
                                         }`}
                                 >
                                     <div className={`w-16 h-16 rounded-2xl flex items-center justify-center transition-colors ${role === 'seller' ? 'bg-canopy text-linen' : 'bg-mist/50 text-slate/50 group-hover:bg-canopy/10 group-hover:text-canopy'
@@ -321,8 +329,8 @@ export default function OnboardingPage() {
                                                 key={m.value}
                                                 onClick={() => setMotivation(m.value)}
                                                 className={`text-left p-3 rounded-lg border transition-all cursor-pointer bg-transparent ${motivation === m.value
-                                                        ? 'border-canopy bg-canopy/5'
-                                                        : 'border-mist hover:border-canopy/30'
+                                                    ? 'border-canopy bg-canopy/5'
+                                                    : 'border-mist hover:border-canopy/30'
                                                     }`}
                                             >
                                                 <span className="text-sm font-medium text-slate block">{m.label}</span>
@@ -346,8 +354,8 @@ export default function OnboardingPage() {
                                                     key={pt.value}
                                                     onClick={() => toggleProjectType(pt.value)}
                                                     className={`flex items-center gap-2 px-3 py-2 rounded-full text-xs font-medium border transition-all cursor-pointer bg-transparent ${active
-                                                            ? 'border-canopy bg-canopy/10 text-canopy'
-                                                            : 'border-mist text-slate/50 hover:border-canopy/30 hover:text-slate'
+                                                        ? 'border-canopy bg-canopy/10 text-canopy'
+                                                        : 'border-mist text-slate/50 hover:border-canopy/30 hover:text-slate'
                                                         }`}
                                                 >
                                                     <Icon size={14} />

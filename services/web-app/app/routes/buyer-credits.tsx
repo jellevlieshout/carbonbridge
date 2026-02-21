@@ -7,6 +7,14 @@ import { Badge } from "~/modules/shared/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "~/modules/shared/ui/table";
 import { Leaf, Award, Clock } from "lucide-react";
 import { toast } from "sonner";
+import type { Route } from "./+types/buyer-credits";
+
+export function meta({ }: Route.MetaArgs) {
+    return [
+        { title: "CarbonBridge | My Credits" },
+        { name: "description", content: "View and manage your verified climate impact portfolio." },
+    ];
+}
 
 function ListingCell({ listingId }: { listingId: string }) {
     const { data: listing, isLoading } = useListingQuery(listingId);

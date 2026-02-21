@@ -9,7 +9,7 @@ Plan to implement                                                               
 │ market expertise. The wizard agent streams responses via SSE, and session state persists in Couchbase so         │
 │ sessions survive browser closes.                                                                                 │
 │                                                                                                                  │
-│ Currently, authenticated users land on a placeholder "Welcome to Smart SEB Lab" page. This plan implements the   │
+│ Currently, authenticated users land on a placeholder "CarbonBridge" page. This plan implements the   │
 │ full wizard UI and redirects authenticated buyers to it.                                                         │
 │                                                                                                                  │
 │ ---                                                                                                              │
