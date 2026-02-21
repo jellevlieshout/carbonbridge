@@ -6,3 +6,4 @@ include:
   - postgres
   - kong
   - web-app
+  - tigerbeetle
