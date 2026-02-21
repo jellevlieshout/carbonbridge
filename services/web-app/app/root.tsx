@@ -58,7 +58,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   );
 }
 
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider, QueryCache, MutationCache } from "@tanstack/react-query";
 import { AuthProvider } from "@clients/api/modules/phantom-token-handler-secured-api-client/AuthContext";
 import { useState } from "react";
 import { Toaster } from "sonner";
@@ -69,10 +69,30 @@ import { ErrorView } from "~/modules/shared/components/ErrorView";
 
 export default function App() {
   const [queryClient] = useState(() => new QueryClient({
+    queryCache: new QueryCache({
+      onError: (error) => {
+        if (error instanceof SessionExpiredError) {
+          window.location.href = '/';
+        }
+      },
+    }),
+    mutationCache: new MutationCache({
+      onError: (error) => {
+        if (error instanceof SessionExpiredError) {
+          window.location.href = '/';
+        }
+      },
+    }),
     defaultOptions: {
       queries: {
         staleTime: 60 * 1000,
-        retry: 1,
+        retry: (failureCount, error) => {
+          if (error instanceof SessionExpiredError) return false;
+          return failureCount < 1;
+        },
+      },
+      mutations: {
+        retry: false,
       },
     },
   }));

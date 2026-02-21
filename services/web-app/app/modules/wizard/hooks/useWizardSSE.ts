@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { refreshToken } from "@clients/api/client";
 import type { WizardStep, SSEEvent } from "../types";
 
 interface UseWizardSSEOptions {
@@ -6,6 +7,49 @@ interface UseWizardSSEOptions {
   onStepChange: (step: WizardStep) => void;
   onDone: (fullResponse: string) => void;
   onError: (message: string) => void;
+}
+
+async function fetchSSE(url: string, signal: AbortSignal): Promise<Response> {
+  const response = await fetch(url, {
+    method: "GET",
+    credentials: "include",
+    headers: {
+      Accept: "text/event-stream",
+      "token-handler-version": "1",
+    },
+    signal,
+  });
+
+  if (response.status === 401) {
+    try {
+      await refreshToken();
+    } catch {
+      window.location.href = '/';
+      throw new Error("Session expired");
+    }
+    const retry = await fetch(url, {
+      method: "GET",
+      credentials: "include",
+      headers: {
+        Accept: "text/event-stream",
+        "token-handler-version": "1",
+      },
+      signal,
+    });
+    if (retry.status === 401) {
+      window.location.href = '/';
+      throw new Error("Session expired");
+    }
+    if (!retry.ok) {
+      throw new Error(`Stream request failed: ${retry.status}`);
+    }
+    return retry;
+  }
+
+  if (!response.ok) {
+    throw new Error(`Stream request failed: ${response.status}`);
+  }
+  return response;
 }
 
 export const useWizardSSE = ({ onToken, onStepChange, onDone, onError }: UseWizardSSEOptions) => {
@@ -28,19 +72,7 @@ export const useWizardSSE = ({ onToken, onStepChange, onDone, onError }: UseWiza
 
       try {
         const url = `${window.location.origin}/api/wizard/session/${sessionId}/stream`;
-        const response = await fetch(url, {
-          method: "GET",
-          credentials: "include",
-          headers: {
-            Accept: "text/event-stream",
-            "token-handler-version": "1",
-          },
-          signal: controller.signal,
-        });
-
-        if (!response.ok) {
-          throw new Error(`Stream request failed: ${response.status}`);
-        }
+        const response = await fetchSSE(url, controller.signal);
 
         const reader = response.body?.getReader();
         if (!reader) throw new Error("No readable stream");
