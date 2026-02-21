@@ -1,3 +1,8 @@
+.cursor/
+.cursorignore
+AGENTS.md
+pyrightconfig.json
+
 # Operating System
 .DS_Store
 .DS_Store?
