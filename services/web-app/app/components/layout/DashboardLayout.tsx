@@ -1,9 +1,26 @@
 import React from 'react';
 import { Sidebar } from './Sidebar';
 import { Topbar } from './Topbar';
-import { Outlet } from 'react-router';
+import { Outlet, Navigate } from 'react-router';
+import { useUserResourcesQuery } from '~/modules/shared/queries/useUserResources';
 
-export function DashboardLayout() {
+export default function DashboardLayout() {
+    const { data: userData, isLoading } = useUserResourcesQuery();
+
+    // While loading user data, show a minimal loading state
+    if (isLoading) {
+        return (
+            <div className="min-h-screen bg-linen flex items-center justify-center">
+                <div className="w-6 h-6 border-2 border-canopy/30 border-t-canopy rounded-full animate-spin" />
+            </div>
+        );
+    }
+
+    // Redirect to onboarding if user hasn't completed it
+    if (userData?.user && !userData.user.company_name) {
+        return <Navigate to="/onboarding" replace />;
+    }
+
     return (
         <div className="min-h-screen bg-linen selection:bg-ember/20 selection:text-slate">
             {/* Fixed Navigation Rail */}

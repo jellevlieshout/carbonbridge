@@ -7,12 +7,19 @@ from typing import Dict, List, Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 from pydantic import BaseModel
+from utils import env, log
 
 from models.entities.couchbase.orders import OrderLineItem
-from models.operations.listings import listing_get, listing_search
-from models.operations.orders import order_create, order_get, order_update_status, order_set_payment_intent
+from models.operations.listings import listing_get, listing_search, listing_update
+from models.operations.orders import (
+    order_create,
+    order_get,
+    order_record_ledger_entries,
+    order_set_payment_intent,
+    order_update_payment_status,
+    order_update_status,
+)
 from models.operations.users import user_get_buyer_profile
-from utils import env, log
 
 logger = log.get_logger(__name__)
 
@@ -44,6 +51,7 @@ async def require_agent_api_key(
 # ---------------------------------------------------------------------------
 # Request / Response schemas
 # ---------------------------------------------------------------------------
+
 
 class ListingSearchRequest(BaseModel):
     project_type: Optional[str] = None
@@ -166,32 +174,32 @@ class MarketContextResponse(BaseModel):
 # Tonnes CO2e per employee per year by sector.
 # Sources: UK DEFRA, EPA, various ESG reporting benchmarks (simplified).
 FOOTPRINT_PER_EMPLOYEE: Dict[str, tuple[float, float]] = {
-    "technology":       (2.0,  5.0),
-    "software":         (2.0,  5.0),
-    "marketing":        (2.5,  6.0),
-    "consulting":       (3.0,  7.0),
-    "finance":          (3.0,  7.0),
-    "legal":            (2.5,  5.5),
-    "healthcare":       (4.0,  8.0),
-    "education":        (2.0,  5.0),
-    "retail":           (4.0,  9.0),
-    "hospitality":      (5.0, 12.0),
-    "manufacturing":    (8.0, 20.0),
-    "logistics":        (10.0, 25.0),
-    "transport":        (10.0, 25.0),
-    "construction":     (8.0, 18.0),
-    "agriculture":      (6.0, 15.0),
-    "energy":           (10.0, 30.0),
-    "mining":           (12.0, 35.0),
-    "food_beverage":    (5.0, 12.0),
-    "real_estate":      (3.0,  7.0),
+    "technology": (2.0, 5.0),
+    "software": (2.0, 5.0),
+    "marketing": (2.5, 6.0),
+    "consulting": (3.0, 7.0),
+    "finance": (3.0, 7.0),
+    "legal": (2.5, 5.5),
+    "healthcare": (4.0, 8.0),
+    "education": (2.0, 5.0),
+    "retail": (4.0, 9.0),
+    "hospitality": (5.0, 12.0),
+    "manufacturing": (8.0, 20.0),
+    "logistics": (10.0, 25.0),
+    "transport": (10.0, 25.0),
+    "construction": (8.0, 18.0),
+    "agriculture": (6.0, 15.0),
+    "energy": (10.0, 30.0),
+    "mining": (12.0, 35.0),
+    "food_beverage": (5.0, 12.0),
+    "real_estate": (3.0, 7.0),
 }
 
 DEFAULT_FOOTPRINT_PER_EMPLOYEE = (3.0, 8.0)
 
 ANALOGIES = [
-    (1.0,  "roughly one return economy flight from London to New York"),
-    (5.0,  "about the same as heating an average UK home for a year"),
+    (1.0, "roughly one return economy flight from London to New York"),
+    (5.0, "about the same as heating an average UK home for a year"),
     (10.0, "equivalent to driving a petrol car about 40,000 km"),
     (50.0, "comparable to the annual emissions of about 5 average European households"),
 ]
@@ -215,6 +223,7 @@ def _build_explanation(low: float, high: float, sector: str, employees: int) -> 
 # Endpoints
 # ---------------------------------------------------------------------------
 
+
 @router.post("/listings/search", response_model=ListingSearchResponse)
 async def internal_search_listings(
     body: ListingSearchRequest,
@@ -235,7 +244,8 @@ async def internal_search_listings(
     if body.co_benefits:
         requested = set(b.lower() for b in body.co_benefits)
         results = [
-            item for item in results
+            item
+            for item in results
             if requested & set(b.lower() for b in item.data.co_benefits)
         ]
 
@@ -248,7 +258,9 @@ async def internal_search_listings(
             project_type=item.data.project_type,
             project_country=item.data.project_country,
             vintage_year=item.data.vintage_year,
-            quantity_available=item.data.quantity_tonnes - item.data.quantity_reserved - item.data.quantity_sold,
+            quantity_available=item.data.quantity_tonnes
+            - item.data.quantity_reserved
+            - item.data.quantity_sold,
             price_per_tonne_eur=item.data.price_per_tonne_eur,
             methodology=item.data.methodology,
             co_benefits=item.data.co_benefits,
@@ -343,7 +355,11 @@ async def internal_create_order_draft(
                 detail=f"Listing {item.listing_id} is not active (status: {listing.data.status})",
             )
 
-        available = listing.data.quantity_tonnes - listing.data.quantity_reserved - listing.data.quantity_sold
+        available = (
+            listing.data.quantity_tonnes
+            - listing.data.quantity_reserved
+            - listing.data.quantity_sold
+        )
         if item.quantity > available:
             raise HTTPException(
                 status_code=400,
@@ -402,9 +418,22 @@ async def internal_execute_payment(
     if body.stripe_payment_intent_id:
         await order_set_payment_intent(order_id, body.stripe_payment_intent_id)
 
-    updated = await order_update_status(order_id, "confirmed")
-    if not updated:
-        raise HTTPException(status_code=500, detail="Failed to confirm order")
+    await order_update_payment_status(order_id, "succeeded")
+    updated = await order_update_status(order_id, "completed")
+    await order_record_ledger_entries(order_id)
+
+    # Move reserved → sold on each listing
+    for li in order.data.line_items:
+        listing = await listing_get(li.listing_id)
+        if listing:
+            listing.data.quantity_reserved -= li.quantity
+            listing.data.quantity_sold += li.quantity
+            if listing.data.quantity_sold >= listing.data.quantity_tonnes:
+                listing.data.status = "sold_out"
+            await listing_update(listing)
+
+    logger.info(f"Order {order_id} completed via internal pay")
+
     return PaymentResponse(
         order_id=order_id,
         status=updated.data.status,
@@ -485,7 +514,9 @@ async def internal_get_market_context(
         if isinstance(data, dict):
             projects.append(
                 MarketContextProject(
-                    offsets_db_project_id=data.get("offsets_db_project_id", row.get("id", "")),
+                    offsets_db_project_id=data.get(
+                        "offsets_db_project_id", row.get("id", "")
+                    ),
                     name=data.get("name"),
                     registry=data.get("registry"),
                     category=data.get("category"),

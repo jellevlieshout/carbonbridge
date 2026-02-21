@@ -3,7 +3,7 @@ import { HeroPanel } from '../components/dashboard/HeroPanel';
 import { CoreTileRow } from '../components/dashboard/CoreTileRow';
 import { MarketplaceSpotlight } from '../components/dashboard/MarketplaceSpotlight';
 import { TransactionHistoryStack } from '../components/dashboard/TransactionHistoryStack';
-import { AgentConfigPanel } from '../components/dashboard/AgentConfigPanel';
+import { AgentActivityPanel } from '../components/dashboard/AgentActivityPanel';
 import { Footer } from '../components/dashboard/Footer';
 
 export default function DashboardPage() {
@@ -13,7 +13,7 @@ export default function DashboardPage() {
             <CoreTileRow />
             <MarketplaceSpotlight />
             <TransactionHistoryStack />
-            <AgentConfigPanel />
+            <AgentActivityPanel />
             <Footer />
         </div>
     );

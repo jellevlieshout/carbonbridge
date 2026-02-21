@@ -50,6 +50,10 @@ tools:
             - { name: AUTH_OIDC_AUDIENCE, value: web-app }
             - { name: AUTH_OIDC_ISSUER, value: Curity }
 
+            - { name: TIGERBEETLE_ADDRESS, value: pt.value tigerbeetle-address }
+
+            - { name: STRIPE_SECRET_KEY, value: pt.secret stripe-secret-key }
+
             - { name: OPENROUTER_PROVISIONING_API_KEY, value: pt.secret openrouter-provisioning-api-key }
 
             - { name: GEMINI_API_KEY, value: pt.secret gemini-api }

@@ -1,5 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router';
+import { Logo } from '~/modules/shared/components/Logo';
 
 export default function NotFound() {
     return (
@@ -10,11 +11,9 @@ export default function NotFound() {
             }}
         >
             <div className="flex-1 flex flex-col items-center justify-center w-full max-w-md text-center">
-                <img
-                    src="/TODO"
-                    alt="TODO"
-                    className="h-16 md:h-24 w-auto mb-8"
-                />
+                <div className="mb-8">
+                    <Logo size="lg" variant="light" />
+                </div>
 
                 <h1 className="text-6xl font-bold text-white mb-4">404</h1>
                 <p className="text-xl text-white mb-8">We haven't built this page (yet)</p>

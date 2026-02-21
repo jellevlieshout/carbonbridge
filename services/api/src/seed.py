@@ -117,7 +117,10 @@ BUYERS = [
             autonomous_agent_criteria={
                 "max_price_eur": 35.0,
                 "min_vintage_year": 2022,
-                "preferred_types": ["renewable"],
+                "preferred_types": ["renewable", "methane_capture"],
+                "preferred_co_benefits": ["jobs", "energy_access", "community"],
+                "monthly_budget_eur": 50000.0,
+                "auto_approve_under_eur": 15000.0,
             },
         ),
     },
@@ -161,6 +164,33 @@ ADMIN = {
     "role": "admin",
     "company_name": "CarbonBridge",
     "country": "Netherlands",
+}
+
+# Curity test user — key matches the 'sub' claim from the OIDC token
+CURITY_TEST_USER = {
+    "key": "jelle",
+    "email": "jelle@carbonbridge.io",
+    "role": "buyer",
+    "company_name": "Jelle's Test Company",
+    "company_size_employees": 10,
+    "sector": "Technology",
+    "country": "Netherlands",
+    "buyer_profile": BuyerProfile(
+        annual_co2_tonnes_estimate=5000.0,
+        primary_offset_motivation="esg_reporting",
+        preferred_project_types=["renewable", "afforestation"],
+        preferred_regions=["Europe", "Africa"],
+        budget_per_tonne_max_eur=30.0,
+        autonomous_agent_enabled=True,
+        autonomous_agent_criteria={
+            "max_price_eur": 30.0,
+            "min_vintage_year": 2022,
+            "preferred_types": ["renewable", "afforestation", "cookstoves"],
+            "preferred_co_benefits": ["jobs", "community", "biodiversity"],
+            "monthly_budget_eur": 25000.0,
+            "auto_approve_under_eur": 10000.0,
+        },
+    ),
 }
 
 
@@ -485,7 +515,7 @@ async def run_seed() -> dict:
     }
 
     # ---- Users ----
-    all_users = [ADMIN] + SELLERS + BUYERS
+    all_users = [ADMIN, CURITY_TEST_USER] + SELLERS + BUYERS
     for u in all_users:
         key = u.pop("key")
         data = UserData(**u)  # type: ignore[arg-type]
@@ -494,6 +524,25 @@ async def run_seed() -> dict:
         # Restore key for later use
         u["key"] = key
     logger.info(f"Seeded {counts['users']} users")
+
+    # ---- TigerBeetle Accounts ----
+    try:
+        from clients.tigerbeetle import ensure_platform_account, create_user_accounts
+
+        ensure_platform_account()
+        logger.info("TigerBeetle: platform escrow account ready")
+
+        for u in all_users:
+            key = u["key"]
+            user = await User.get(key)
+            if user and not user.data.tigerbeetle_pending_account_id:
+                pending_id, settled_id = create_user_accounts()
+                user.data.tigerbeetle_pending_account_id = pending_id
+                user.data.tigerbeetle_settled_account_id = settled_id
+                await User.update(user)
+                logger.info(f"TigerBeetle: created accounts for {key}")
+    except Exception as e:
+        logger.warning(f"TigerBeetle seeding skipped (not running?): {e}")
 
     # ---- Listings ----
     for listing in _build_listings():

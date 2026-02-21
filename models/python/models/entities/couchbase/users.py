@@ -23,6 +23,8 @@ class UserData(BaseCouchbaseEntityData):
     sector: Optional[str] = None
     country: Optional[str] = None
     stripe_customer_id: Optional[str] = None
+    stripe_connect_account_id: Optional[str] = None
+    stripe_connect_onboarding_complete: bool = False
     tigerbeetle_pending_account_id: Optional[int] = None
     tigerbeetle_settled_account_id: Optional[int] = None
     buyer_profile: Optional[BuyerProfile] = None

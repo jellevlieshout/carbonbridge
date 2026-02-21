@@ -1,5 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import gsap from 'gsap';
+import { useUserResourcesQuery } from '~/modules/shared/queries/useUserResources';
+import { useOrdersQuery } from '~/modules/shared/queries/useOrders';
 
 const agentMessages = [
     "Agent monitoring 3 new Woodland Carbon Code listings...",
@@ -13,8 +15,31 @@ export function HeroPanel() {
     const [messageIndex, setMessageIndex] = useState(0);
     const [displayedText, setDisplayedText] = useState("");
 
+    const { data: userData } = useUserResourcesQuery();
+    const { data: orders } = useOrdersQuery();
+
+    // Compute stats from real order data
+    const completedOrders = (orders || []).filter((o: any) => o.status === 'completed');
+    const totalTonnesOffset = completedOrders.reduce((sum: number, o: any) => {
+        return sum + (o.line_items || []).reduce((s: number, li: any) => s + (li.quantity || 0), 0);
+    }, 0);
+    const totalSpent = completedOrders.reduce((sum: number, o: any) => sum + (o.total_eur || 0), 0);
+    const avgPrice = totalTonnesOffset > 0 ? (totalSpent / totalTonnesOffset) : 0;
+    const activeCredits = completedOrders.reduce((sum: number, o: any) => {
+        return sum + (o.line_items || []).length;
+    }, 0);
+
+    // Vintage range from orders
+    const allOrders = orders || [];
+    const vintages: number[] = [];
+    // We don't have vintage directly on orders, so we'll show the year range from order creation
+    const currentYear = new Date().getFullYear();
+
+    // Buyer profile estimate as fallback
+    const buyerProfile = userData?.user?.buyer_profile;
+    const annualEstimate = buyerProfile?.annual_co2_tonnes_estimate;
+
     useEffect(() => {
-        // GSAP staggered reveal
         const ctx = gsap.context(() => {
             gsap.fromTo(
                 ".hero-stagger",
@@ -26,11 +51,8 @@ export function HeroPanel() {
     }, []);
 
     useEffect(() => {
-        // Typewriter effect
         const fullText = agentMessages[messageIndex];
         let charIndex = 0;
-
-        // reset
         setDisplayedText("");
 
         const typeInterval = setInterval(() => {
@@ -50,6 +72,9 @@ export function HeroPanel() {
         };
     }, [messageIndex]);
 
+    const displayTonnes = totalTonnesOffset > 0 ? totalTonnesOffset : (annualEstimate || 0);
+    const displayLabel = totalTonnesOffset > 0 ? 'offset this year' : 'annual estimate';
+
     return (
         <div
             ref={containerRef}
@@ -60,29 +85,30 @@ export function HeroPanel() {
                 className="absolute inset-0 pointer-events-none opacity-[0.04] mix-blend-overlay z-0"
                 style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E\")" }}
             />
-            {/* Radial Mesh Gradient subtle overlay */}
             <div className="absolute inset-0 z-0 bg-[radial-gradient(circle_at_80%_0%,rgba(61,107,82,0.4)_0%,transparent_50%)] pointer-events-none" />
 
             {/* Left Column: Carbon Position */}
             <div className="relative z-10 flex flex-col gap-6 w-full md:w-1/2">
                 <h2 className="hero-stagger text-[4rem] leading-[1.05] tracking-tight font-serif italic text-linen">
-                    −142 tCO₂e
-                    <span className="block text-4xl mt-2 not-italic font-sans font-medium opacity-90 tracking-normal">offset this year</span>
+                    {displayTonnes > 0 ? `−${displayTonnes.toLocaleString()}` : '0'} tCO₂e
+                    <span className="block text-4xl mt-2 not-italic font-sans font-medium opacity-90 tracking-normal">{displayLabel}</span>
                 </h2>
 
                 <div className="flex flex-wrap gap-3 mt-4">
                     <div className="hero-stagger font-mono text-xs bg-linen/10 px-4 py-2 rounded-full border border-linen/10 flex items-center gap-2">
                         <span className="opacity-60">Credits Held</span>
-                        <span className="font-medium text-linen">38 active</span>
+                        <span className="font-medium text-linen">{activeCredits} active</span>
                     </div>
                     <div className="hero-stagger font-mono text-xs bg-linen/10 px-4 py-2 rounded-full border border-linen/10 flex items-center gap-2">
                         <span className="opacity-60">Avg. Price Paid</span>
-                        <span className="font-medium text-linen">€14.20 / tCO₂e</span>
+                        <span className="font-medium text-linen">{avgPrice > 0 ? `€${avgPrice.toFixed(2)}` : '—'} / tCO₂e</span>
                     </div>
-                    <div className="hero-stagger font-mono text-xs bg-linen/10 px-4 py-2 rounded-full border border-linen/10 flex items-center gap-2">
-                        <span className="opacity-60">Portfolio Vintage</span>
-                        <span className="font-medium text-linen">2022 to 2024</span>
-                    </div>
+                    {buyerProfile?.budget_per_tonne_max_eur && (
+                        <div className="hero-stagger font-mono text-xs bg-linen/10 px-4 py-2 rounded-full border border-linen/10 flex items-center gap-2">
+                            <span className="opacity-60">Budget Cap</span>
+                            <span className="font-medium text-linen">€{buyerProfile.budget_per_tonne_max_eur.toFixed(2)} / tCO₂e</span>
+                        </div>
+                    )}
                 </div>
             </div>
 

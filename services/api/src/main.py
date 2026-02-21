@@ -1,13 +1,15 @@
 import os
-import uvicorn
-from pathlib import Path
 from contextlib import asynccontextmanager
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi import FastAPI
-from utils import log
-from routes.base import router
-from routes import fake_registry
+from pathlib import Path
+
 import conf
+import uvicorn
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from routes import fake_registry
+from routes.base import router
+from utils import log
+
 from clients.couchbase import check_connection
 
 log.init(conf.get_log_level())
@@ -34,6 +36,7 @@ def _init_observability() -> None:
     project = os.environ.get("LANGSMITH_PROJECT", "carbonbridge")
     # Guard: if someone accidentally set this to a UUID, reset to name
     import re
+
     if re.fullmatch(r"[0-9a-f-]{36}", project):
         logger.warning(
             "LANGSMITH_PROJECT looks like a UUID (%s). "
@@ -52,7 +55,9 @@ def _init_observability() -> None:
         Agent.instrument_all()
         logger.info("LangSmith tracing enabled — project: '%s'", project)
     except ImportError as exc:
-        logger.warning("langsmith/pydantic_ai not installed — tracing disabled: %s", exc)
+        logger.warning(
+            "langsmith/pydantic_ai not installed — tracing disabled: %s", exc
+        )
     except Exception as exc:
         logger.warning("Failed to initialize LangSmith tracing: %s", exc)
 
@@ -67,14 +72,26 @@ async def lifespan(app: FastAPI):
     # Initialize auth client if enabled
     if conf.USE_AUTH:
         from utils import auth
+
         app.state.auth_client = auth.AuthClient(conf.get_auth_config())
     else:
         logger.warning("Authentication is disabled (set USE_AUTH to enable)")
 
     # Initialize agent observability
     _init_observability()
+    # Log agent availability
+    logger.info("Autonomous buyer agent: Gemini (Pydantic AI) mode enabled")
+
+    # Initialize agent scheduler
+    from agent.scheduler import init_scheduler, shutdown_scheduler
+
+    init_scheduler()
 
     yield
+
+    # Shutdown agent scheduler
+    shutdown_scheduler()
+
 
 app = FastAPI(
     title="Backend API",
@@ -118,5 +135,5 @@ if __name__ == "__main__":
         reload=http_conf.autoreload,
         log_level="info",
         reload_dirs=[str(Path(__file__).parent), "/models", "/clients"],
-        log_config=None
+        log_config=None,
     )

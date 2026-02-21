@@ -2,6 +2,7 @@ import React from 'react';
 import { startLogin } from '@clients/api/client';
 import { ErrorRenderer } from '@clients/api/modules/phantom-token-handler-secured-api-client/utilities/errorRenderer';
 import { Button } from '~/modules/shared/ui/button';
+import { Logo } from '~/modules/shared/components/Logo';
 
 export function AnonymousView() {
     async function handleLogin() {
@@ -21,11 +22,7 @@ export function AnonymousView() {
             }}
         >
             <div className="flex-1 flex flex-col items-center justify-center w-full max-w-md">
-                <img
-                    src="/TODO"
-                    alt="TODO"
-                    className="h-16 md:h-24 w-auto"
-                />
+                <Logo size="lg" variant="light" />
 
                 <Button
                     onClick={handleLogin}

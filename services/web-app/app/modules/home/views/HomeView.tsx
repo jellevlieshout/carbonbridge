@@ -7,9 +7,12 @@ interface HomeViewProps {
     isLoggedIn: boolean;
     isPageLoaded: boolean;
     isSessionExpired: boolean;
+    needsOnboarding: boolean;
+    isUserLoading: boolean;
+    userRole?: string;
 }
 
-export const HomeView = ({ isLoggedIn, isPageLoaded, isSessionExpired }: HomeViewProps) => {
+export const HomeView = ({ isLoggedIn, isPageLoaded, isSessionExpired, needsOnboarding, isUserLoading, userRole }: HomeViewProps) => {
     if (isSessionExpired) {
         return <SessionExpiredView />;
     }
@@ -18,8 +21,17 @@ export const HomeView = ({ isLoggedIn, isPageLoaded, isSessionExpired }: HomeVie
         return <AuthenticatingView />;
     }
 
+    if (isLoggedIn && isUserLoading) {
+        return <AuthenticatingView />;
+    }
+
+    if (isLoggedIn && needsOnboarding) {
+        return <Navigate to="/onboarding" replace />;
+    }
+
     if (isLoggedIn) {
-        return <Navigate to="/buyer/wizard" replace />;
+        const destination = userRole === 'seller' ? '/seller/listings' : '/buyer/dashboard';
+        return <Navigate to={destination} replace />;
     }
 
     return <AnonymousView />;
