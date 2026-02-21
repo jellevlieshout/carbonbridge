@@ -1,3 +1,5 @@
+from typing import cast
+
 from pydantic import BaseModel
 from utils import auth, env, log
 from utils.env import EnvVarSpec
@@ -58,18 +60,19 @@ HTTP_EXPOSE_ERRORS = EnvVarSpec(
 
 ## AI Agents ##
 
-WIZARD_MODEL = EnvVarSpec(id="WIZARD_MODEL", default="gemini-2.0-flash", is_optional=True)
+WIZARD_MODEL = EnvVarSpec(
+    id="WIZARD_MODEL", default="gemini-2.5-flash-lite", is_optional=True
+)
 GOOGLE_API_KEY = EnvVarSpec(id="GOOGLE_API_KEY", is_optional=True, is_secret=True)
-GEMINI_API_KEY = EnvVarSpec(id="GEMINI_API_KEY", is_optional=True, is_secret=True)
-INTERNAL_AGENT_API_KEY = EnvVarSpec(id="INTERNAL_AGENT_API_KEY", is_optional=True, is_secret=True)
-INTERNAL_API_BASE_URL = EnvVarSpec(id="INTERNAL_API_BASE_URL", default="http://localhost:3030/api", is_optional=True)
-
+GEMINI_API_KEY = EnvVarSpec(id="GEMINI_API", is_optional=True, is_secret=True)
 ## Observability ##
 
 LANGSMITH_API_KEY = EnvVarSpec(id="LANGSMITH_API_KEY", is_optional=True, is_secret=True)
 # Also accept LANGSMITH_API as alias (used in some envs)
 LANGSMITH_API = EnvVarSpec(id="LANGSMITH_API", is_optional=True, is_secret=True)
-LANGSMITH_PROJECT = EnvVarSpec(id="LANGSMITH_PROJECT", default="carbonbridge", is_optional=True)
+LANGSMITH_PROJECT = EnvVarSpec(
+    id="LANGSMITH_PROJECT", default="carbonbridge", is_optional=True
+)
 
 #### Validation ####
 VALIDATED_ENV_VARS = [HTTP_AUTORELOAD, HTTP_EXPOSE_ERRORS, HTTP_PORT, LOG_LEVEL]
@@ -97,21 +100,20 @@ def get_auth_config() -> auth.AuthClientConfig:
     return auth.AuthClientConfig(
         jwk_url=env.parse(AUTH_OIDC_JWK_URL),
         audience=env.parse(AUTH_OIDC_AUDIENCE),
-        issuer=env.parse(AUTH_OIDC_ISSUER),
     )
 
 
 def get_http_expose_errors() -> bool:
-    return env.parse(HTTP_EXPOSE_ERRORS)
+    return cast(bool, env.parse(HTTP_EXPOSE_ERRORS))
 
 
 def get_log_level() -> str:
-    return env.parse(LOG_LEVEL)
+    return cast(str, env.parse(LOG_LEVEL))
 
 
 def get_http_conf() -> HttpServerConf:
     return HttpServerConf(
-        host=env.parse(HTTP_HOST),
-        port=env.parse(HTTP_PORT),
-        autoreload=env.parse(HTTP_AUTORELOAD),
+        host=cast(str, env.parse(HTTP_HOST)),
+        port=int(cast(str, env.parse(HTTP_PORT))),
+        autoreload=cast(bool, env.parse(HTTP_AUTORELOAD)),
     )

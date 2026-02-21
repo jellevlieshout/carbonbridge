@@ -12,8 +12,8 @@ from pydantic import BaseModel
 from pydantic_ai import Agent
 from pydantic_ai.models.google import GoogleModel
 from pydantic_ai.providers.google import GoogleProvider
-
 from utils import log
+
 from .schemas import (
     FootprintOutput,
     OrderOutput,
@@ -64,8 +64,12 @@ _STEP_OUTPUT_MAP: dict[str, Type[BaseModel]] = {
 
 
 def _build_model() -> GoogleModel:
-    model_name = os.environ.get("WIZARD_MODEL", "gemini-2.0-flash")
-    api_key = os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY")
+    model_name = os.environ.get("WIZARD_MODEL", "gemini-2.5-flash-lite")
+    api_key = (
+        os.environ.get("GOOGLE_API_KEY")
+        or os.environ.get("GEMINI_API_KEY")
+        or os.environ.get("GEMINI_API")
+    )
     provider = GoogleProvider(api_key=api_key) if api_key else GoogleProvider()
     return GoogleModel(model_name, provider=provider)
 

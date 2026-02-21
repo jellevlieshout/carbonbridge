@@ -28,14 +28,12 @@ INTERNAL_AGENT_API_KEY = env.EnvVarSpec(
 
 
 async def require_agent_api_key(
-    x_agent_api_key: str = Header(..., alias="X-Agent-API-Key"),
+    x_agent_api_key: Optional[str] = Header(None, alias="X-Agent-API-Key"),
 ):
     expected = env.parse(INTERNAL_AGENT_API_KEY)
     if not expected:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Internal agent API key not configured",
-        )
+        # No key configured — allow all internal callers (dev / hackathon mode)
+        return
     if x_agent_api_key != expected:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

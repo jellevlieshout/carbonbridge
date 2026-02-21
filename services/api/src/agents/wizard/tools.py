@@ -1,61 +1,68 @@
 """
 Pydantic AI tool implementations for the buyer wizard agent.
 
-Tools call internal FastAPI endpoints (secured with INTERNAL_AGENT_API_KEY)
-rather than importing Couchbase models directly; this keeps the agent layer
-decoupled from the persistence layer and lets the tools be tested in isolation.
+Tools call model operations directly (in-process) — no HTTP, no special API
+keys. Authentication is handled at the HTTP layer when the wizard route is
+invoked, so the agent inherits the caller's identity and can trust its
+buyer_id/session_id context.
 """
 
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
-import httpx
 from pydantic_ai import RunContext
-
 from utils import log
 
 logger = log.get_logger(__name__)
 
-# ── Dependency injected into every tool ───────────────────────────────
+# ── Footprint estimation lookup table ─────────────────────────────────
+# Tonnes CO2e per employee per year by sector.
+# Sources: UK DEFRA, EPA, various ESG reporting benchmarks (simplified).
+
+_FOOTPRINT_PER_EMPLOYEE: Dict[str, tuple[float, float]] = {
+    "technology":    (2.0,  5.0),
+    "software":      (2.0,  5.0),
+    "marketing":     (2.5,  6.0),
+    "consulting":    (3.0,  7.0),
+    "finance":       (3.0,  7.0),
+    "legal":         (2.5,  5.5),
+    "healthcare":    (4.0,  8.0),
+    "education":     (2.0,  5.0),
+    "retail":        (4.0,  9.0),
+    "hospitality":   (5.0, 12.0),
+    "manufacturing": (8.0, 20.0),
+    "logistics":     (10.0, 25.0),
+    "transport":     (10.0, 25.0),
+    "construction":  (8.0, 18.0),
+    "agriculture":   (6.0, 15.0),
+    "energy":        (10.0, 30.0),
+    "mining":        (12.0, 35.0),
+    "food_beverage": (5.0, 12.0),
+    "real_estate":   (3.0,  7.0),
+}
+
+_DEFAULT_FOOTPRINT = (3.0, 8.0)
+
+_ANALOGIES = [
+    (1.0,  "roughly one return economy flight from London to New York"),
+    (5.0,  "about the same as heating an average UK home for a year"),
+    (10.0, "equivalent to driving a petrol car about 40,000 km"),
+    (50.0, "comparable to the annual emissions of about 5 average European households"),
+]
+
+
+# ── Dependencies ──────────────────────────────────────────────────────
 
 
 @dataclass
 class WizardDeps:
-    """Dependencies injected into the Pydantic AI agent at call time."""
+    """Context passed from the wizard runner into every agent tool call."""
 
     buyer_id: str
     session_id: str
-    internal_base_url: str  # e.g. "http://localhost:8000/api"
-    api_key: str
 
 
-# ── helpers ───────────────────────────────────────────────────────────
-
-
-async def _post(
-    deps: WizardDeps, path: str, body: Dict[str, Any]
-) -> Dict[str, Any]:
-    async with httpx.AsyncClient(timeout=15.0) as client:
-        r = await client.post(
-            f"{deps.internal_base_url}{path}",
-            json=body,
-            headers={"X-Agent-API-Key": deps.api_key},
-        )
-        r.raise_for_status()
-        return r.json()
-
-
-async def _get(deps: WizardDeps, path: str) -> Dict[str, Any]:
-    async with httpx.AsyncClient(timeout=15.0) as client:
-        r = await client.get(
-            f"{deps.internal_base_url}{path}",
-            headers={"X-Agent-API-Key": deps.api_key},
-        )
-        r.raise_for_status()
-        return r.json()
-
-
-# ── tool functions registered on the agent ────────────────────────────
+# ── Tool implementations ──────────────────────────────────────────────
 
 
 async def tool_get_buyer_profile(ctx: RunContext[WizardDeps]) -> Dict[str, Any]:
@@ -64,11 +71,12 @@ async def tool_get_buyer_profile(ctx: RunContext[WizardDeps]) -> Dict[str, Any]:
     Returns an empty dict if the buyer has no profile yet.
     """
     try:
-        return await _get(ctx.deps, f"/internal/buyers/{ctx.deps.buyer_id}/profile")
-    except httpx.HTTPStatusError as e:
-        if e.response.status_code == 404:
+        from models.operations.users import user_get_buyer_profile
+
+        profile = await user_get_buyer_profile(ctx.deps.buyer_id)
+        if not profile:
             return {}
-        raise
+        return profile.model_dump()
     except Exception as exc:
         logger.warning("get_buyer_profile failed: %s", exc)
         return {}
@@ -85,10 +93,30 @@ async def tool_estimate_footprint(
     Returns estimated_tonnes_low, estimated_tonnes_high, midpoint, and an
     explanation with a plain-language analogy.
     """
-    payload: Dict[str, Any] = {"sector": sector, "employees": employees}
-    if country:
-        payload["country"] = country
-    return await _post(ctx.deps, "/internal/footprint/estimate", payload)
+    sector_key = sector.lower().replace(" ", "_").replace("-", "_")
+    per_emp_low, per_emp_high = _FOOTPRINT_PER_EMPLOYEE.get(sector_key, _DEFAULT_FOOTPRINT)
+
+    low = round(per_emp_low * employees, 1)
+    high = round(per_emp_high * employees, 1)
+    mid = round((low + high) / 2, 1)
+
+    analogy = ""
+    for threshold, text in reversed(_ANALOGIES):
+        if mid >= threshold:
+            analogy = f" That's {text}."
+            break
+
+    explanation = (
+        f"Based on the {sector} sector with {employees} employees, "
+        f"we estimate your annual footprint is roughly {low:.0f}–{high:.0f} tonnes CO2e "
+        f"(midpoint {mid:.0f} tonnes).{analogy}"
+    )
+    return {
+        "estimated_tonnes_low": low,
+        "estimated_tonnes_high": high,
+        "midpoint": mid,
+        "explanation": explanation,
+    }
 
 
 async def tool_search_listings(
@@ -107,22 +135,42 @@ async def tool_search_listings(
     Each listing includes: id, project_name, project_type, project_country,
     price_per_tonne_eur, quantity_available, co_benefits, description.
     """
-    payload: Dict[str, Any] = {"limit": limit}
-    if project_type:
-        payload["project_type"] = project_type
-    if project_country:
-        payload["project_country"] = project_country
-    if max_price is not None:
-        payload["max_price"] = max_price
-    if min_quantity is not None:
-        payload["min_quantity"] = min_quantity
-    if vintage_year is not None:
-        payload["vintage_year"] = vintage_year
-    if co_benefits:
-        payload["co_benefits"] = co_benefits
+    from models.operations.listings import listing_search
 
-    data = await _post(ctx.deps, "/internal/listings/search", payload)
-    return data.get("listings", [])
+    results = await listing_search(
+        project_type=project_type,
+        project_country=project_country,
+        max_price=max_price,
+        min_quantity=min_quantity,
+        vintage_year=vintage_year,
+        limit=limit,
+    )
+
+    if co_benefits:
+        requested = {b.lower() for b in co_benefits}
+        results = [
+            r for r in results
+            if requested & {b.lower() for b in r.data.co_benefits}
+        ]
+
+    return [
+        {
+            "id": item.id,
+            "project_name": item.data.project_name,
+            "project_type": item.data.project_type,
+            "project_country": item.data.project_country,
+            "price_per_tonne_eur": item.data.price_per_tonne_eur,
+            "quantity_available": round(
+                item.data.quantity_tonnes
+                - item.data.quantity_reserved
+                - item.data.quantity_sold,
+                2,
+            ),
+            "co_benefits": item.data.co_benefits,
+            "description": item.data.description,
+        }
+        for item in results
+    ]
 
 
 async def tool_get_listing_detail(
@@ -133,7 +181,27 @@ async def tool_get_listing_detail(
     Retrieve full detail for a single listing by its ID.
     Use this when the buyer asks for more information about a specific option.
     """
-    return await _get(ctx.deps, f"/internal/listings/{listing_id}")
+    from models.operations.listings import listing_get
+
+    listing = await listing_get(listing_id)
+    if not listing:
+        return {}
+    d = listing.data
+    return {
+        "id": listing.id,
+        "project_name": d.project_name,
+        "project_type": d.project_type,
+        "project_country": d.project_country,
+        "vintage_year": d.vintage_year,
+        "price_per_tonne_eur": d.price_per_tonne_eur,
+        "quantity_available": round(
+            d.quantity_tonnes - d.quantity_reserved - d.quantity_sold, 2
+        ),
+        "methodology": d.methodology,
+        "co_benefits": d.co_benefits,
+        "description": d.description,
+        "verification_status": d.verification_status,
+    }
 
 
 async def tool_create_order_draft(
@@ -146,8 +214,42 @@ async def tool_create_order_draft(
     Reserves quantity on the listing atomically.
     Returns order_id, status, line_items, and total_eur.
     """
-    payload = {
-        "buyer_id": ctx.deps.buyer_id,
-        "line_items": [{"listing_id": listing_id, "quantity": quantity}],
+    from models.entities.couchbase.orders import OrderLineItem
+    from models.operations.listings import listing_get, listing_reserve_quantity
+    from models.operations.orders import order_create
+
+    listing = await listing_get(listing_id)
+    if not listing:
+        return {"error": f"Listing {listing_id} not found"}
+
+    if listing.data.status != "active":
+        return {"error": f"Listing {listing_id} is not active"}
+
+    available = round(
+        listing.data.quantity_tonnes
+        - listing.data.quantity_reserved
+        - listing.data.quantity_sold,
+        2,
+    )
+    if quantity > available:
+        return {"error": f"Only {available}t available on listing {listing_id}"}
+
+    reserved = await listing_reserve_quantity(listing_id, quantity)
+    if not reserved:
+        return {"error": f"Could not reserve {quantity}t on listing {listing_id}"}
+
+    subtotal = round(quantity * listing.data.price_per_tonne_eur, 2)
+    line_item = OrderLineItem(
+        listing_id=listing_id,
+        quantity=quantity,
+        price_per_tonne=listing.data.price_per_tonne_eur,
+        subtotal=subtotal,
+    )
+    order = await order_create(ctx.deps.buyer_id, [line_item], subtotal)
+
+    return {
+        "order_id": order.id,
+        "status": order.data.status,
+        "line_items": [li.model_dump() for li in order.data.line_items],
+        "total_eur": order.data.total_eur,
     }
-    return await _post(ctx.deps, "/internal/orders/draft", payload)

@@ -9,12 +9,11 @@ LLM invocation and avoids chaining multiple agent calls per turn.
 
 from __future__ import annotations
 
-import os
 from typing import Any, Dict
 
 from langgraph.graph import END, START, StateGraph
-
 from utils import log
+
 from .agent import create_wizard_agent
 from .schemas import (
     FootprintOutput,
@@ -35,8 +34,6 @@ def _build_deps(state: WizardState) -> WizardDeps:
     return WizardDeps(
         buyer_id=state.get("buyer_id", ""),
         session_id=state.get("session_id", ""),
-        internal_base_url=os.environ.get("INTERNAL_API_BASE_URL", "http://localhost:3030/api"),
-        api_key=os.environ.get("INTERNAL_AGENT_API_KEY", ""),
     )
 
 
@@ -51,7 +48,9 @@ def _history_text(state: WizardState) -> str:
 
 def _prompt_for_step(state: WizardState) -> str:
     history = _history_text(state)
-    context_parts = [f"[Current wizard step: {state.get('current_step', 'profile_check')}]"]
+    context_parts = [
+        f"[Current wizard step: {state.get('current_step', 'profile_check')}]"
+    ]
 
     buyer_profile = state.get("buyer_profile")
     if buyer_profile:
@@ -111,15 +110,11 @@ async def node_profile_check(state: WizardState) -> Dict[str, Any]:
 
     if not buyer_profile:
         try:
-            import httpx
+            from models.operations.users import user_get_buyer_profile
 
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                r = await client.get(
-                    f"{deps.internal_base_url}/internal/buyers/{deps.buyer_id}/profile",
-                    headers={"X-Agent-API-Key": deps.api_key},
-                )
-                if r.status_code == 200:
-                    buyer_profile = r.json()
+            profile = await user_get_buyer_profile(deps.buyer_id)
+            if profile:
+                buyer_profile = profile.model_dump()
         except Exception as exc:
             logger.warning("Could not fetch buyer profile: %s", exc)
 
@@ -215,7 +210,9 @@ async def node_listing_search(state: WizardState) -> Dict[str, Any]:
 
     updates: Dict[str, Any] = {
         "response_text": output.response_text,
-        "next_step": "order_creation" if output.selected_listing_id else output.next_step,
+        "next_step": "order_creation"
+        if output.selected_listing_id
+        else output.next_step,
     }
     return updates
 
@@ -229,7 +226,9 @@ async def node_recommendation(state: WizardState) -> Dict[str, Any]:
 
     return {
         "response_text": output.response_text,
-        "next_step": "order_creation" if output.selected_listing_id else output.next_step,
+        "next_step": "order_creation"
+        if output.selected_listing_id
+        else output.next_step,
     }
 
 
