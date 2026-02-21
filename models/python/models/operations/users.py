@@ -1,7 +1,7 @@
 import asyncio
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Literal, Optional, Tuple
 
-from models.entities.couchbase.users import User, UserData, BuyerProfile
+from models.entities.couchbase.users import BuyerProfile, User, UserData
 
 
 async def user_get_data_for_frontend(user_id: str) -> Dict[str, Any]:
@@ -22,8 +22,7 @@ async def user_create_if_not_exists_and_get(user_id: str, email: str) -> User:
 async def user_get_by_email(email: str) -> Optional[User]:
     keyspace = User.get_keyspace()
     rows = await keyspace.query(
-        f"SELECT META().id, * FROM {keyspace} WHERE email = $email",
-        email=email
+        f"SELECT META().id, * FROM {keyspace} WHERE email = $email", email=email
     )
     for row in rows:
         data_dict = row.get("users")
@@ -32,7 +31,12 @@ async def user_get_by_email(email: str) -> Optional[User]:
     return None
 
 
-async def user_register(email: str, hashed_password: str, role: str, **kwargs) -> User:
+async def user_register(
+    email: str,
+    hashed_password: str,
+    role: Literal["buyer", "seller", "admin"],
+    **kwargs,
+) -> User:
     data = UserData(
         email=email,
         hashed_password=hashed_password,
@@ -48,8 +52,11 @@ async def user_update_onboarding(user_id: str, data: dict) -> User:
         raise ValueError(f"User with ID {user_id} not found")
 
     allowed_fields = {
-        "role", "company_name", "company_size_employees",
-        "sector", "country",
+        "role",
+        "company_name",
+        "company_size_employees",
+        "sector",
+        "country",
     }
     for key, value in data.items():
         if key in allowed_fields:
@@ -76,7 +83,9 @@ async def user_get_buyer_profile(user_id: str) -> Optional[BuyerProfile]:
     return user.data.buyer_profile
 
 
-async def user_enable_autonomous_agent(user_id: str, criteria: dict, wallet_id: Optional[str] = None) -> User:
+async def user_enable_autonomous_agent(
+    user_id: str, criteria: dict, wallet_id: Optional[str] = None
+) -> User:
     user = await User.get(user_id)
     if not user:
         raise ValueError(f"User with ID {user_id} not found")
@@ -106,8 +115,14 @@ async def ensure_tigerbeetle_accounts(user_id: str) -> Tuple[int, int]:
     if not user:
         raise ValueError(f"User with ID {user_id} not found")
 
-    if user.data.tigerbeetle_pending_account_id and user.data.tigerbeetle_settled_account_id:
-        return (user.data.tigerbeetle_pending_account_id, user.data.tigerbeetle_settled_account_id)
+    if (
+        user.data.tigerbeetle_pending_account_id
+        and user.data.tigerbeetle_settled_account_id
+    ):
+        return (
+            user.data.tigerbeetle_pending_account_id,
+            user.data.tigerbeetle_settled_account_id,
+        )
 
     from clients.tigerbeetle import create_user_accounts
 
@@ -130,6 +145,5 @@ async def user_get_agent_enabled_buyers() -> List[User]:
     )
     rows = await keyspace.query(query)
     return [
-        User(id=row["id"], data=row.get("users"))
-        for row in rows if row.get("users")
+        User(id=row["id"], data=row.get("users")) for row in rows if row.get("users")
     ]

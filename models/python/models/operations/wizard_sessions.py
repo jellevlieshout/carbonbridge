@@ -1,7 +1,8 @@
-from typing import Optional
+from typing import Any, Dict, List, Optional
 from datetime import datetime, timezone
 from models.entities.couchbase.wizard_sessions import (
     WizardSession, WizardSessionData, ConversationMessage, ExtractedPreferences,
+    WizardStep,
 )
 
 
@@ -51,7 +52,7 @@ async def wizard_session_add_message(
 
 
 async def wizard_session_update_step(
-    session_id: str, step: str,
+    session_id: str, step: WizardStep,
 ) -> Optional[WizardSession]:
     session = await WizardSession.get(session_id)
     if not session:
@@ -68,5 +69,40 @@ async def wizard_session_update_preferences(
     if not session:
         return None
     session.data.extracted_preferences = preferences
+    session.data.last_active_at = datetime.now(timezone.utc)
+    return await WizardSession.update(session)
+
+
+async def wizard_session_save_context(
+    session_id: str,
+    footprint_context: Optional[Dict[str, Any]] = None,
+    recommended_listing_ids: Optional[List[str]] = None,
+    draft_order_id: Optional[str] = None,
+    draft_order_total_eur: Optional[float] = None,
+    search_broadened: Optional[bool] = None,
+    autobuy_opt_in: Optional[bool] = None,
+    autobuy_criteria_snapshot: Optional[Dict[str, Any]] = None,
+) -> Optional[WizardSession]:
+    """
+    Persist graph-level context so the session can be fully resumed.
+    Only non-None arguments are updated.
+    """
+    session = await WizardSession.get(session_id)
+    if not session:
+        return None
+    if footprint_context is not None:
+        session.data.footprint_context = footprint_context
+    if recommended_listing_ids is not None:
+        session.data.recommended_listing_ids = recommended_listing_ids
+    if draft_order_id is not None:
+        session.data.draft_order_id = draft_order_id
+    if draft_order_total_eur is not None:
+        session.data.draft_order_total_eur = draft_order_total_eur
+    if search_broadened is not None:
+        session.data.search_broadened = search_broadened
+    if autobuy_opt_in is not None:
+        session.data.autobuy_opt_in = autobuy_opt_in
+    if autobuy_criteria_snapshot is not None:
+        session.data.autobuy_criteria_snapshot = autobuy_criteria_snapshot
     session.data.last_active_at = datetime.now(timezone.utc)
     return await WizardSession.update(session)

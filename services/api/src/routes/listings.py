@@ -14,7 +14,7 @@ from models.operations.listings import (
 )
 from models.operations.registry_verifications import verification_create
 from utils import log
-from .dependencies import current_user_get, require_authenticated
+from .dependencies import require_authenticated
 from .fake_registry import get_project, get_credits
 
 logger = log.get_logger(__name__)
@@ -130,7 +130,7 @@ async def route_listing_search(
         offset=offset,
     )
     return ListingSearchResponse(
-        listings=[_listing_to_response(l) for l in results],
+        listings=[_listing_to_response(item) for item in results],
         count=len(results),
     )
 

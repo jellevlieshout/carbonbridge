@@ -518,7 +518,7 @@ async def run_seed() -> dict:
     all_users = [ADMIN, CURITY_TEST_USER] + SELLERS + BUYERS
     for u in all_users:
         key = u.pop("key")
-        data = UserData(**u)
+        data = UserData(**u)  # type: ignore[arg-type]
         await User.create_or_update(key, data)
         counts["users"] += 1
         # Restore key for later use
@@ -545,12 +545,12 @@ async def run_seed() -> dict:
         logger.warning(f"TigerBeetle seeding skipped (not running?): {e}")
 
     # ---- Listings ----
-    for l in _build_listings():
-        key = l.pop("key")
-        data = ListingData(**l)
-        await Listing.create_or_update(key, data, user_id=l.get("seller_id"))
+    for listing in _build_listings():
+        key = listing.pop("key")
+        data = ListingData(**listing)
+        await Listing.create_or_update(key, data, user_id=listing.get("seller_id"))
         counts["listings"] += 1
-        l["key"] = key
+        listing["key"] = key
     logger.info(f"Seeded {counts['listings']} listings")
 
     # ---- Orders ----

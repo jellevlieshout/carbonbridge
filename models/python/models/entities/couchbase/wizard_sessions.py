@@ -3,6 +3,12 @@ from datetime import datetime
 from pydantic import BaseModel
 from clients.couchbase import BaseModelCouchbase, BaseCouchbaseEntityData
 
+WizardStep = Literal[
+    "profile_check", "onboarding", "footprint_estimate",
+    "preference_elicitation", "listing_search",
+    "recommendation", "order_creation"
+]
+
 
 class ConversationMessage(BaseModel):
     role: str
@@ -19,15 +25,22 @@ class ExtractedPreferences(BaseModel):
 
 class WizardSessionData(BaseCouchbaseEntityData):
     buyer_id: str
-    current_step: Literal[
-        "profile_check", "onboarding", "footprint_estimate",
-        "preference_elicitation", "listing_search",
-        "recommendation", "order_creation"
-    ] = "profile_check"
+    current_step: WizardStep = "profile_check"
     conversation_history: List[ConversationMessage] = []
     extracted_preferences: Optional[ExtractedPreferences] = None
     last_active_at: Optional[datetime] = None
     expires_at: Optional[datetime] = None
+
+    # ── graph context persisted for resume ────────────────────────────
+    footprint_context: Optional[Dict[str, Any]] = None
+    recommended_listing_ids: List[str] = []
+    draft_order_id: Optional[str] = None
+    draft_order_total_eur: Optional[float] = None
+    # Whether listing search filters were already broadened once this session
+    search_broadened: bool = False
+    # ── autonomous-buy handoff ────────────────────────────────────────
+    autobuy_opt_in: bool = False
+    autobuy_criteria_snapshot: Optional[Dict[str, Any]] = None
 
 
 class WizardSession(BaseModelCouchbase[WizardSessionData]):

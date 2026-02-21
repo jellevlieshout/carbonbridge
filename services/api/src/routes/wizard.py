@@ -1,6 +1,4 @@
-import asyncio
 import json
-from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
@@ -43,7 +41,6 @@ def _sse_event(data: dict) -> str:
 async def route_wizard_session_create(user: dict = Depends(require_authenticated)):
     buyer_id = user["sub"]
 
-    # Return existing active session if one exists
     existing = await wizard_session_get_active_for_buyer(buyer_id)
     if existing:
         return _session_to_dict(existing)
@@ -53,7 +50,7 @@ async def route_wizard_session_create(user: dict = Depends(require_authenticated
 
 
 # ---------------------------------------------------------------------------
-# POST /wizard/session/{id}/message — send a user message
+# POST /wizard/session/{id}/message — persist user message, then SSE
 # ---------------------------------------------------------------------------
 
 class MessageRequest(BaseModel):
@@ -72,75 +69,34 @@ async def route_wizard_send_message(
     if session.data.buyer_id != user["sub"]:
         raise HTTPException(status_code=403, detail="Not your session")
 
-    # Persist user message
     updated = await wizard_session_add_message(session_id, "user", body.content)
     return _session_to_dict(updated)
 
 
 # ---------------------------------------------------------------------------
-# GET /wizard/session/{id}/stream — SSE streaming response
+# GET /wizard/session/{id}/stream — SSE streaming response (real agent)
 # ---------------------------------------------------------------------------
 
-# Placeholder responses until Pydantic AI agent is wired up
-PLACEHOLDER_RESPONSES = {
-    "profile_check": (
-        "Welcome to CarbonBridge! I'm here to help you find the right carbon "
-        "credits for your business. Let me start by learning a bit about your "
-        "company. What sector does your business operate in, and roughly how "
-        "many employees do you have?"
-    ),
-    "onboarding": (
-        "Great, thanks for sharing that. I'll use this to estimate your "
-        "carbon footprint and find credits that match your needs. "
-        "Shall we look at your estimated emissions next?"
-    ),
-    "footprint_estimate": (
-        "Based on what you've told me, I've estimated your annual carbon "
-        "footprint. Now let's talk about what kind of offset projects "
-        "appeal to you — do you have a preference for forestry, renewable "
-        "energy, cookstoves, or another type?"
-    ),
-    "preference_elicitation": (
-        "Noted! I'll focus on projects matching those preferences. "
-        "Let me search our verified listings for the best options. "
-        "Give me just a moment..."
-    ),
-    "listing_search": (
-        "I've found several verified listings that match your criteria. "
-        "Let me put together a recommendation for you."
-    ),
-    "recommendation": (
-        "Here are my top recommendations based on your preferences and "
-        "budget. Take a look and let me know if you'd like to proceed "
-        "with any of these, or if you'd like me to search again with "
-        "different criteria."
-    ),
-    "order_creation": (
-        "Excellent choice! I'll set up your order now. "
-        "You'll see a summary with the total cost before confirming."
-    ),
-}
+async def _stream_agent(session_id: str, buyer_id: str):
+    """
+    Drive the wizard agent and yield SSE-formatted events.
+    Imports runner lazily so startup import errors don't break the whole API.
+    """
+    try:
+        from agents.wizard.runner import run_wizard_turn
+    except Exception as exc:
+        logger.error("Failed to import wizard agent: %s", exc)
+        yield _sse_event({"type": "error", "message": "Agent not available"})
+        yield "data: [DONE]\n\n"
+        return
 
+    try:
+        async for event in run_wizard_turn(session_id, buyer_id):
+            yield _sse_event(event)
+    except Exception as exc:
+        logger.error("Wizard stream error for session %s: %s", session_id, exc)
+        yield _sse_event({"type": "error", "message": "Unexpected error during generation"})
 
-async def _stream_placeholder(session):
-    """Stream a placeholder response token-by-token via SSE."""
-    step = session.data.current_step
-    text = PLACEHOLDER_RESPONSES.get(step, PLACEHOLDER_RESPONSES["profile_check"])
-
-    # Stream tokens (word by word for natural feel)
-    words = text.split(" ")
-    full_response = ""
-    for i, word in enumerate(words):
-        token = word if i == 0 else f" {word}"
-        full_response += token
-        yield _sse_event({"type": "token", "content": token})
-        await asyncio.sleep(0.04)
-
-    # Persist assistant response
-    await wizard_session_add_message(session.id, "assistant", full_response)
-
-    # Send done event
-    yield _sse_event({"type": "done", "full_response": full_response})
     yield "data: [DONE]\n\n"
 
 
@@ -156,7 +112,7 @@ async def route_wizard_stream(
         raise HTTPException(status_code=403, detail="Not your session")
 
     return StreamingResponse(
-        _stream_placeholder(session),
+        _stream_agent(session_id, user["sub"]),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
