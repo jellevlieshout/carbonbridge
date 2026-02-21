@@ -57,8 +57,9 @@ export function HeroPanel() {
 
         const typeInterval = setInterval(() => {
             if (charIndex < fullText.length) {
-                setDisplayedText(prev => prev + fullText[charIndex]);
+                const ch = fullText[charIndex];
                 charIndex++;
+                setDisplayedText(prev => prev + ch);
             } else {
                 clearInterval(typeInterval);
                 setTimeout(() => {
