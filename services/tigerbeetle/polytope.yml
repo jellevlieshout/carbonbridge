@@ -1,0 +1,40 @@
+tools:
+  tigerbeetle:
+    info: Runs the TigerBeetle database cluster
+    run:
+      - tool: polytope/container
+        args:
+          image: ghcr.io/tigerbeetle/tigerbeetle:latest
+          id: tigerbeetle
+          restart:
+            policy: on-failure
+          services:
+            - id: tigerbeetle
+              ports:
+                - {protocol: tcp, port: 3000, expose-as: 3000}
+          mounts:
+            - { path: /data, source: { type: volume, scope: project, id: tigerbeetle-data } }
+          cmd:
+            - start
+            - --addresses=0.0.0.0:3000
+            - /data/0.tigerbeetle
+          create: always
+
+  tigerbeetle-format:
+    info: Formats the TigerBeetle database data file
+    run:
+      - tool: polytope/container
+        args:
+          image: ghcr.io/tigerbeetle/tigerbeetle:latest
+          id: tigerbeetle-format
+          restart:
+            policy: never
+          mounts:
+            - { path: /data, source: { type: volume, scope: project, id: tigerbeetle-data } }
+          cmd:
+            - format
+            - --cluster=0
+            - --replica=0
+            - --replica-count=1
+            - /data/0.tigerbeetle
+          create: always
