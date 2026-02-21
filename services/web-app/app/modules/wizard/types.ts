@@ -5,7 +5,8 @@ export type WizardStep =
   | "preference_elicitation"
   | "listing_search"
   | "recommendation"
-  | "order_creation";
+  | "order_creation"
+  | "autobuy_waitlist";
 
 export interface ConversationMessage {
   role: string;
@@ -55,7 +56,24 @@ export interface SSEErrorEvent {
   message: string;
 }
 
-export type SSEEvent = SSETokenEvent | SSEStepChangeEvent | SSEDoneEvent | SSEErrorEvent;
+export interface SSEBuyerHandoffEvent {
+  type: "buyer_handoff";
+  outcome: "purchased" | "proposed_for_approval" | "skipped" | "failed";
+  message: string;
+}
+
+export interface SSEAutobuywaitlistEvent {
+  type: "autobuy_waitlist";
+  opted_in: boolean;
+}
+
+export type SSEEvent =
+  | SSETokenEvent
+  | SSEStepChangeEvent
+  | SSEDoneEvent
+  | SSEErrorEvent
+  | SSEBuyerHandoffEvent
+  | SSEAutobuywaitlistEvent;
 
 // Visual step mapping — collapses 7 backend steps into 5 visual dots
 export const STEP_ORDER: WizardStep[] = [
@@ -74,6 +92,7 @@ export const STEP_LABELS: Record<WizardStep, string> = {
   listing_search: "Recommendations",
   recommendation: "Recommendations",
   order_creation: "Purchase",
+  autobuy_waitlist: "Monitoring",
 };
 
 /** Maps any backend step to its visual dot index (0-4) */
@@ -86,6 +105,7 @@ export function stepToVisualIndex(step: WizardStep): number {
     listing_search: "recommendation",
     recommendation: "recommendation",
     order_creation: "order_creation",
+    autobuy_waitlist: "order_creation",
   };
   return STEP_ORDER.indexOf(collapsed[step]);
 }

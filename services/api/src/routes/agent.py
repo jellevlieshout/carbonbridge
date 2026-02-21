@@ -16,8 +16,8 @@ from typing import Any, List, Optional
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel
 
-from agent.buyer_agent import run_buyer_agent
-from agent.seller_agent import run_seller_advisory_agent
+from agents.buyer.agent import run_buyer_agent
+from agents.seller.agent import run_seller_advisory_agent
 from models.entities.couchbase.orders import OrderLineItem
 from models.entities.couchbase.users import User
 from models.operations.agent_runs import (
