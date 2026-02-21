@@ -19,7 +19,7 @@ Error handling:
 from __future__ import annotations
 
 import asyncio
-from typing import Any, AsyncGenerator, Dict, Optional, cast
+from typing import TYPE_CHECKING, Any, AsyncGenerator, Dict, Optional, cast
 
 from models.entities.couchbase.wizard_sessions import WizardStep
 from models.operations.wizard_sessions import (
@@ -30,6 +30,9 @@ from models.operations.wizard_sessions import (
     wizard_session_update_step,
 )
 from utils import log
+
+if TYPE_CHECKING:
+    from .schemas import BuyerHandoffResult
 
 from .graph import get_wizard_graph
 from .state import WizardState, state_from_session
@@ -301,9 +304,48 @@ async def run_wizard_turn(
     response_text = ""
     graph_error = False
 
+    # Steps that should auto-chain to the next node without waiting for user input.
+    # e.g. listing_search → autobuy_waitlist runs both nodes in one turn.
+    _AUTO_CHAIN_STEPS = {"autobuy_waitlist"}
+
     try:
         graph = get_wizard_graph()
         final_state = await graph.ainvoke(initial_state)
+
+        # Auto-chain: if the node transitioned to an auto-chain step AND the user
+        # has already opted in (detected in this same turn), run the next node
+        # immediately so both messages arrive in one round-trip.
+        # We do NOT auto-chain when there's no opt-in yet — that would cause the
+        # autobuy_waitlist node to re-ask the same question redundantly.
+        _next = final_state.get("next_step") if final_state is not None else None
+        if (
+            final_state is not None
+            and _next in _AUTO_CHAIN_STEPS
+            and _next != original_step
+            and final_state.get("autobuy_opt_in", False)
+        ):
+            chained_step: str = cast(str, _next)
+            chain_input: WizardState = {**final_state, "current_step": chained_step}  # type: ignore[misc]
+            try:
+                chained_state: WizardState = await graph.ainvoke(chain_input)
+                first_response = (final_state.get("response_text") or "").strip()
+                chained_response = (chained_state.get("response_text") or "").strip()
+                merged: WizardState = {**final_state, **chained_state}  # type: ignore[misc]
+                if first_response and chained_response:
+                    merged["response_text"] = first_response + "\n\n" + chained_response
+                elif chained_response:
+                    merged["response_text"] = chained_response
+                final_state = merged
+                logger.info(
+                    "Auto-chained %s → %s for session=%s",
+                    original_step, chained_step, session_id,
+                )
+            except Exception as chain_exc:
+                logger.warning(
+                    "Auto-chain to %s failed for session=%s: %s",
+                    chained_step, session_id, chain_exc,
+                )
+
     except Exception as exc:
         if _is_pydantic_ai_retry_error(exc):
             logger.warning(
@@ -341,7 +383,7 @@ async def run_wizard_turn(
         _valid_steps = {
             "profile_check", "onboarding", "footprint_estimate",
             "preference_elicitation", "listing_search",
-            "recommendation", "order_creation", "autobuy_waitlist",
+            "recommendation", "order_creation", "autobuy_waitlist", "complete",
         }
         if new_step and new_step not in _valid_steps:
             new_step = None
@@ -395,9 +437,9 @@ async def run_wizard_turn(
             if final_state.get("handoff_to_buyer_agent"):
                 context_kwargs["handoff_to_buyer_agent"] = True
             if final_state.get("buyer_agent_run_id"):
-                context_kwargs["buyer_agent_run_id"] = final_state["buyer_agent_run_id"]
+                context_kwargs["buyer_agent_run_id"] = final_state.get("buyer_agent_run_id")
             if final_state.get("buyer_agent_outcome"):
-                context_kwargs["buyer_agent_outcome"] = final_state["buyer_agent_outcome"]
+                context_kwargs["buyer_agent_outcome"] = final_state.get("buyer_agent_outcome")
             if final_state.get("waitlist_opted_in"):
                 context_kwargs["waitlist_opted_in"] = True
             if final_state.get("waitlist_declined"):

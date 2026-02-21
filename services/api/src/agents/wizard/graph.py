@@ -16,14 +16,13 @@ Conversation quality rules enforced here:
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 from langgraph.graph import END, START, StateGraph
 from utils import log
 
 from .agent import create_wizard_agent
 from .schemas import (
-    BuyerHandoffResult,
     FootprintOutput,
     OrderOutput,
     PreferenceOutput,
@@ -359,7 +358,7 @@ async def node_onboarding(state: WizardState) -> Dict[str, Any]:
 
 async def node_footprint_estimate(state: WizardState) -> Dict[str, Any]:
     """Step 1: Estimate footprint via tool; auto-advance when buyer accepts."""
-    fp_exists = bool(state.get("footprint_estimate") and state["footprint_estimate"].get("midpoint"))
+    fp_exists = bool((state.get("footprint_estimate") or {}).get("midpoint"))
 
     if fp_exists:
         instructions = (
@@ -404,7 +403,7 @@ async def node_footprint_estimate(state: WizardState) -> Dict[str, Any]:
         updates["next_step"] = "preference_elicitation"
         # Carry forward existing estimate if we didn't get a new one
         if not updates.get("footprint_estimate") and state.get("footprint_estimate"):
-            updates["footprint_estimate"] = state["footprint_estimate"]
+            updates["footprint_estimate"] = state.get("footprint_estimate")
 
     return updates
 
@@ -463,14 +462,14 @@ async def node_preference_elicitation(state: WizardState) -> Dict[str, Any]:
 async def node_listing_search(state: WizardState) -> Dict[str, Any]:
     """Step 3a: Search listings; route to recommendation, handoff, or waitlist."""
     prefs = state.get("extracted_preferences")
-    fp = state.get("footprint_estimate")
     bp = state.get("buyer_profile") or {}
-    target_tonnes = fp.get("midpoint") if fp else None
+    max_price = (prefs.max_price_eur if prefs else None) or bp.get("budget_per_tonne_max_eur") or 50
+    project_type_hint = prefs.project_types[0] if prefs and prefs.project_types else "any"
 
     instructions = (
         "Call tool_search_listings using the buyer's project type preferences and budget. "
-        f"{'Use project_type=' + (prefs.project_types[0] if prefs and prefs.project_types else 'any') + '. '}"
-        f"{'Use max_price=' + str(prefs.max_price_eur or bp.get('budget_per_tonne_max_eur') or 50) + '. '}"
+        f"Use project_type={project_type_hint}. "
+        f"Use max_price={max_price}. "
         "Present up to 3 matching listings with a 'why we picked this for you' blurb each. "
         "Include price per tonne and estimated total for their footprint. "
         "If NO listings found, ask: 'Would you like our agent to monitor the market and automatically "
@@ -618,12 +617,16 @@ async def node_autobuy_waitlist(state: WizardState) -> Dict[str, Any]:
         )
     else:
         instructions = (
-            "No suitable listings were found right now. "
-            "Ask clearly: 'Would you like our autonomous agent to monitor the market and "
-            "automatically purchase matching carbon credits when they become available? "
-            "You can cancel any time from your dashboard.' "
-            "Set buyer_wants_autobuy_waitlist=True if they say yes. "
-            "Set buyer_declined_autobuy=True if they say no, not now, or maybe later."
+            "No suitable listings were found matching the buyer's preferences. "
+            "FIRST check the buyer's CURRENT MESSAGE and conversation history: "
+            "- If they already said yes / sure / ok / absolutely / definitely to monitoring → "
+            "  set buyer_wants_autobuy_waitlist=True and confirm: "
+            "  'Done! I've activated the monitoring agent for you. It will automatically buy "
+            "  matching credits when they appear. You can cancel from your dashboard.' "
+            "- If they said no / not now / maybe later → set buyer_declined_autobuy=True. "
+            "- Otherwise ask clearly: 'Would you like our autonomous agent to monitor the "
+            "  market and automatically purchase matching carbon credits when they become "
+            "  available? You can cancel any time from your dashboard.' "
         )
 
     agent = create_wizard_agent("autobuy_waitlist")

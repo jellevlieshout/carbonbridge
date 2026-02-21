@@ -6,7 +6,8 @@ from clients.couchbase import BaseModelCouchbase, BaseCouchbaseEntityData
 WizardStep = Literal[
     "profile_check", "onboarding", "footprint_estimate",
     "preference_elicitation", "listing_search",
-    "recommendation", "order_creation"
+    "recommendation", "order_creation",
+    "autobuy_waitlist", "complete",
 ]
 
 
