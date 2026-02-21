@@ -20,6 +20,7 @@ from typing import List, Literal, Optional, Tuple
 import stripe as stripe_lib
 from pydantic import BaseModel
 from pydantic_ai import Agent, RunContext
+from stripe_agent_toolkit.api import StripeAPI
 
 from models.entities.couchbase.agent_runs import (
     AgentRunData,
@@ -39,6 +40,7 @@ from models.operations.listings import listing_get, listing_reserve_quantity, li
 from models.operations.orders import (
     order_create,
     order_set_payment_intent,
+    order_set_payment_link,
     order_update_status,
 )
 from opentelemetry import trace as otel_trace
@@ -57,6 +59,9 @@ STRIPE_SECRET_KEY = env.EnvVarSpec(
 )
 GEMINI_API_KEY = env.EnvVarSpec(
     id="GEMINI_API_KEY", is_optional=True, is_secret=True
+)
+WEB_APP_URL = env.EnvVarSpec(
+    id="WEB_APP_URL", is_optional=True, is_secret=False
 )
 
 # Default criteria values when buyer hasn't specified
@@ -461,31 +466,58 @@ async def run_buyer_agent(
         ]
         order = await order_create(buyer_id, line_items, decision.total_cost_eur)
 
-        # Payment (Stripe or mock)
+        # Payment via Stripe Agent Toolkit (Payment Link) or mock
         if _stripe_configured():
             key = env.parse(STRIPE_SECRET_KEY)
-            stripe_lib.api_key = key
-            intent = await stripe_lib.PaymentIntent.create_async(
-                amount=int(decision.total_cost_eur * 100),
+            stripe_agent = StripeAPI(secret_key=key)
+            web_app_url = env.parse(WEB_APP_URL) or "http://localhost:8000"
+
+            # Create a Stripe Product + Price for this credit purchase
+            product = stripe_agent.run(
+                "create_product",
+                name=f"Carbon Credits — {listing.data.project_name}",
+                metadata={
+                    "carbonbridge_order_id": order.id,
+                    "listing_id": decision.listing_id,
+                },
+            )
+            product_id = product.get("id") if isinstance(product, dict) else product
+
+            price = stripe_agent.run(
+                "create_price",
+                product=product_id,
+                unit_amount=int(listing.data.price_per_tonne_eur * 100),
                 currency="eur",
-                customer=user.data.stripe_customer_id,
-                off_session=True,
-                confirm=True,
+            )
+            price_id = price.get("id") if isinstance(price, dict) else price
+
+            # Create Payment Link via Stripe Agent Toolkit
+            payment_link = stripe_agent.run(
+                "create_payment_link",
+                line_items=[{"price": price_id, "quantity": int(decision.quantity_tonnes)}],
                 metadata={
                     "carbonbridge_order_id": order.id,
                     "agent_run_id": run_id,
-                    "agent_type": "autonomous_buyer",
                     "buyer_id": buyer_id,
                 },
+                after_completion={
+                    "type": "redirect",
+                    "redirect": {"url": f"{web_app_url}/buyer/credits?order={order.id}"},
+                },
             )
-            await order_set_payment_intent(order.id, intent.id)
-            payment_id = intent.id
-            payment_mode = "stripe"
+            payment_link_url = payment_link.get("url") if isinstance(payment_link, dict) else str(payment_link)
+            payment_link_id = payment_link.get("id", "") if isinstance(payment_link, dict) else ""
+
+            await order_set_payment_link(order.id, payment_link_url)
+            await order_set_payment_intent(order.id, payment_link_id)
+            payment_id = payment_link_id
+            payment_mode = "stripe_agent_toolkit"
         else:
             mock_id = f"pi_agent_{hashlib.sha256(order.id.encode()).hexdigest()[:16]}"
             await order_set_payment_intent(order.id, mock_id)
             payment_id = mock_id
             payment_mode = "mock"
+            payment_link_url = None
 
         await order_update_status(order.id, "confirmed")
 
@@ -494,6 +526,7 @@ async def run_buyer_agent(
                 "order_id": order.id,
                 "payment_intent_id": payment_id,
                 "payment_mode": payment_mode,
+                "payment_link_url": payment_link_url,
                 "total_eur": decision.total_cost_eur,
                 "quantity_tonnes": decision.quantity_tonnes,
                 "listing_id": decision.listing_id,

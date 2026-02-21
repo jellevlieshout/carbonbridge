@@ -18,6 +18,7 @@ class OrderData(BaseCouchbaseEntityData):
     total_eur: float = 0.0
     stripe_payment_intent_id: Optional[str] = None
     stripe_payment_status: Optional[str] = None
+    stripe_payment_link_url: Optional[str] = None
     retirement_requested: bool = False
     retirement_reference: Optional[str] = None
     completed_at: Optional[datetime] = None

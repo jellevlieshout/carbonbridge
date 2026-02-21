@@ -124,7 +124,9 @@ function traceToStream(step: TraceStep, triggeredAt: string | null): StreamMessa
             return {
                 tag: 'PAY',
                 text: `Order executed — ${out.quantity_tonnes || '?'}t purchased for €${Number(out.total_eur || 0).toFixed(2)}.`,
-                detail: out.payment_mode === 'stripe'
+                detail: out.payment_mode === 'stripe_agent_toolkit'
+                    ? 'Stripe Payment Link created — awaiting buyer checkout'
+                    : out.payment_mode === 'stripe'
                     ? `Stripe payment confirmed · ${out.payment_intent_id}`
                     : out.payment_mode === 'mock'
                     ? 'Mock payment (Stripe not configured)'
@@ -560,20 +562,37 @@ export function AgentActivityPanel() {
                                 const payStep = runDetail.trace_steps?.find(s => s.label === 'Created order and executed payment');
                                 const payOut = payStep?.output && typeof payStep.output === 'object' ? payStep.output : null;
                                 const isStripe = payOut?.payment_mode === 'stripe';
+                                const isAgentToolkit = payOut?.payment_mode === 'stripe_agent_toolkit';
+                                const paymentLinkUrl = payOut?.payment_link_url;
                                 return (
-                                    <div className={`font-mono text-xs px-4 py-3 rounded-xl border flex flex-col gap-1.5 ${
-                                        isStripe ? 'bg-violet-500/10 border-violet-500/15' : 'bg-emerald-500/10 border-emerald-500/15'
-                                    }`}>
-                                        <div className="flex items-center gap-2">
-                                            <div className={`w-2 h-2 rounded-full ${isStripe ? 'bg-violet-400' : 'bg-emerald-400'}`} />
-                                            <span className={isStripe ? 'text-violet-300/80' : 'text-emerald-300/80'}>
-                                                Order placed {isStripe ? 'via Stripe' : 'successfully'}
-                                            </span>
+                                    <>
+                                        <div className={`font-mono text-xs px-4 py-3 rounded-xl border flex flex-col gap-1.5 ${
+                                            isStripe || isAgentToolkit ? 'bg-violet-500/10 border-violet-500/15' : 'bg-emerald-500/10 border-emerald-500/15'
+                                        }`}>
+                                            <div className="flex items-center gap-2">
+                                                <div className={`w-2 h-2 rounded-full ${isStripe || isAgentToolkit ? 'bg-violet-400' : 'bg-emerald-400'}`} />
+                                                <span className={isStripe || isAgentToolkit ? 'text-violet-300/80' : 'text-emerald-300/80'}>
+                                                    {isAgentToolkit ? 'Payment link created — awaiting checkout' : isStripe ? 'Order placed via Stripe' : 'Order placed successfully'}
+                                                </span>
+                                            </div>
+                                            {isStripe && payOut?.payment_intent_id && (
+                                                <span className="text-[10px] text-violet-300/40 pl-4 truncate">{payOut.payment_intent_id}</span>
+                                            )}
                                         </div>
-                                        {isStripe && payOut?.payment_intent_id && (
-                                            <span className="text-[10px] text-violet-300/40 pl-4 truncate">{payOut.payment_intent_id}</span>
+                                        {isAgentToolkit && paymentLinkUrl && runDetail.status !== 'completed' && (
+                                            <a
+                                                href={paymentLinkUrl}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="w-full py-3 bg-gradient-to-r from-violet-500 to-indigo-500 text-white font-sans font-medium rounded-xl hover:from-violet-400 hover:to-indigo-400 transition-all duration-300 flex items-center justify-center gap-2 shadow-lg shadow-violet-500/20"
+                                            >
+                                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                                    <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
+                                                </svg>
+                                                Complete Payment
+                                            </a>
                                         )}
-                                    </div>
+                                    </>
                                 );
                             })()}
 

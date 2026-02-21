@@ -72,6 +72,7 @@ class OrderResponse(BaseModel):
     total_eur: float
     stripe_payment_intent_id: Optional[str] = None
     stripe_client_secret: Optional[str] = None
+    stripe_payment_link_url: Optional[str] = None
     retirement_requested: bool = False
 
 
@@ -87,6 +88,7 @@ def _order_to_response(order, client_secret: Optional[str] = None) -> OrderRespo
         total_eur=order.data.total_eur,
         stripe_payment_intent_id=order.data.stripe_payment_intent_id,
         stripe_client_secret=client_secret,
+        stripe_payment_link_url=order.data.stripe_payment_link_url,
         retirement_requested=order.data.retirement_requested,
     )
 
