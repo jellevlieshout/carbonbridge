@@ -25,6 +25,7 @@ tools:
         args:
           id: pt.param id
           image: astral/uv:python3.13-bookworm-slim
+          unconfined: true
           code: { type: repo, path: . }
           cmd: pt.param cmd
           restart:
