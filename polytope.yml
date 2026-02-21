@@ -15,12 +15,12 @@ tools:
     run:
       - tool: "api"
       - tool: "config-manager"
+      - tool: "couchbase"
       - tool: "curity"
       - tool: "postgres"
       - tool: "pgweb"
       - tool: "web-app"
       - tool: "kong"
-
 
   initialize_session:
     info: |-

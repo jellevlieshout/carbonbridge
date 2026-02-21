@@ -1,4 +1,4 @@
-import { AuthenticatedHomePresenter as AuthenticatedHome } from "~/modules/home/presenters/AuthenticatedHomePresenter";
+import { Navigate } from "react-router";
 import { AnonymousView } from "~/modules/auth/views/AnonymousView";
 import { AuthenticatingView } from "~/modules/auth/views/AuthenticatingView";
 import { SessionExpiredView } from "~/modules/auth/views/SessionExpiredView";
@@ -19,7 +19,7 @@ export const HomeView = ({ isLoggedIn, isPageLoaded, isSessionExpired }: HomeVie
     }
 
     if (isLoggedIn) {
-        return <AuthenticatedHome />;
+        return <Navigate to="/buyer/wizard" replace />;
     }
 
     return <AnonymousView />;
