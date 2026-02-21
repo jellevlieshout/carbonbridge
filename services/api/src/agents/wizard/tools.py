@@ -128,23 +128,30 @@ async def tool_search_listings(
     vintage_year: Optional[int] = None,
     co_benefits: Optional[List[str]] = None,
     limit: int = 4,
-) -> List[Dict[str, Any]]:
+) -> Dict[str, Any]:
     """
     Search active, verified carbon credit listings matching the buyer's preferences.
-    Returns up to `limit` listings sorted by date added.
+    Returns a dict with:
+      - listings: list of matching listings (may be empty)
+      - total: count of results
+      - listings_found: bool — False when no results (use this to trigger no-match flow)
     Each listing includes: id, project_name, project_type, project_country,
     price_per_tonne_eur, quantity_available, co_benefits, description.
     """
-    from models.operations.listings import listing_search
+    try:
+        from models.operations.listings import listing_search
 
-    results = await listing_search(
-        project_type=project_type,
-        project_country=project_country,
-        max_price=max_price,
-        min_quantity=min_quantity,
-        vintage_year=vintage_year,
-        limit=limit,
-    )
+        results = await listing_search(
+            project_type=project_type,
+            project_country=project_country,
+            max_price=max_price,
+            min_quantity=min_quantity,
+            vintage_year=vintage_year,
+            limit=limit,
+        )
+    except Exception as exc:
+        logger.warning("tool_search_listings failed: %s", exc)
+        return {"listings": [], "total": 0, "listings_found": False, "error": str(exc)}
 
     if co_benefits:
         requested = {b.lower() for b in co_benefits}
@@ -153,7 +160,7 @@ async def tool_search_listings(
             if requested & {b.lower() for b in r.data.co_benefits}
         ]
 
-    return [
+    items = [
         {
             "id": item.id,
             "project_name": item.data.project_name,
@@ -171,6 +178,12 @@ async def tool_search_listings(
         }
         for item in results
     ]
+
+    return {
+        "listings": items,
+        "total": len(items),
+        "listings_found": len(items) > 0,
+    }
 
 
 async def tool_get_listing_detail(

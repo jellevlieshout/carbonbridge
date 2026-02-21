@@ -1,44 +1,63 @@
 """
-Strict Pydantic output schemas used by the Pydantic AI agent.
+Strict Pydantic output schemas for the Pydantic AI wizard agent.
 
-Each schema corresponds to what the LLM must return for a specific wizard
-step so we can validate structure before persisting or streaming.
+Tightened so that transition signals are boolean flags (not free-text strings)
+wherever possible, reducing the model's ability to produce ambiguous values that
+exhaust structured-output retries.
 """
 
 from typing import List, Literal, Optional
 from pydantic import BaseModel, Field
 
 
+# ── Transition step literals ───────────────────────────────────────────────
+WizardNextStep = Literal[
+    "profile_check",
+    "onboarding",
+    "footprint_estimate",
+    "preference_elicitation",
+    "listing_search",
+    "recommendation",
+    "order_creation",
+    "complete",
+    "autobuy_waitlist",
+]
+
+
 class ProfileIntentOutput(BaseModel):
     """Returned by the agent during profile_check / onboarding steps."""
 
     response_text: str = Field(
-        description="Plain-language reply to stream to the buyer. Max 3 sentences."
+        description=(
+            "Plain-language reply. Max 3 sentences. "
+            "If sector and employees are now known, end with: "
+            "'If anything looks wrong, just let me know.'"
+        )
     )
     sector: Optional[str] = Field(
         None,
-        description=(
-            "Inferred sector slug (e.g. 'technology', 'manufacturing'). "
-            "None if not yet determined."
-        ),
+        description="Sector slug (e.g. 'manufacturing', 'technology'). None if not yet determined.",
     )
     employees: Optional[int] = Field(
         None,
-        description="Estimated employee count if the buyer mentioned it.",
+        description="Employee count if the buyer mentioned it. None if not yet known.",
     )
-    motivation: Optional[
-        Literal["compliance", "esg_reporting", "brand", "personal"]
-    ] = Field(None, description="Primary offset motivation if mentioned.")
+    motivation: Optional[Literal["compliance", "esg_reporting", "brand", "personal"]] = Field(
+        None, description="Primary offset motivation if mentioned."
+    )
     profile_complete: bool = Field(
         False,
         description=(
-            "True once sector and employees are known and the buyer "
-            "confirmed the summary."
+            "Set True when BOTH sector and employees are known, "
+            "regardless of whether the buyer sent an explicit confirmation."
         ),
     )
-    next_step: Optional[str] = Field(
-        None,
-        description="Step to advance to. Use 'footprint_estimate' when profile_complete.",
+    advance_to_footprint: bool = Field(
+        False,
+        description=(
+            "Set True to advance to the footprint step. "
+            "Should be True whenever profile_complete is True."
+        ),
     )
 
 
@@ -46,15 +65,21 @@ class FootprintOutput(BaseModel):
     """Returned by the agent during footprint_estimate step."""
 
     response_text: str = Field(
-        description="Plain-language footprint explanation with analogy."
+        description=(
+            "Plain-language footprint explanation with analogy. "
+            "End with: 'Does that sound right, or would you like to adjust it?'"
+        )
     )
     accepted_tonnes: Optional[float] = Field(
         None,
-        description="Accepted annual tonne estimate (either from tool or buyer override).",
+        description="Final tonne estimate the buyer accepted (from tool or override). None if still discussing.",
     )
-    next_step: Optional[str] = Field(
-        None,
-        description="Step to advance to; use 'preference_elicitation' when buyer accepts.",
+    advance_to_preferences: bool = Field(
+        False,
+        description=(
+            "Set True to move to the preference step. "
+            "Set True when the buyer has confirmed the footprint estimate or shown willingness to proceed."
+        ),
     )
 
 
@@ -66,11 +91,11 @@ class PreferenceOutput(BaseModel):
     )
     project_types: List[str] = Field(
         default_factory=list,
-        description="Project types the buyer selected (e.g. 'forestry', 'renewable_energy').",
+        description="Project types selected (e.g. 'forestry', 'renewable_energy', 'cookstoves').",
     )
     regions: List[str] = Field(
         default_factory=list,
-        description="Preferred geographic regions or empty list for no preference.",
+        description="Preferred geographic regions; empty list means no preference.",
     )
     max_price_eur: Optional[float] = Field(
         None,
@@ -78,11 +103,14 @@ class PreferenceOutput(BaseModel):
     )
     co_benefits: List[str] = Field(
         default_factory=list,
-        description="Co-benefit keywords mentioned by the buyer.",
+        description="Co-benefit keywords mentioned.",
     )
-    next_step: Optional[str] = Field(
-        None,
-        description="Use 'listing_search' once preferences are captured.",
+    advance_to_search: bool = Field(
+        False,
+        description=(
+            "Set True to advance to listing search. "
+            "Set True once at least one project type preference is captured."
+        ),
     )
 
 
@@ -91,17 +119,33 @@ class RecommendationOutput(BaseModel):
 
     response_text: str = Field(
         description=(
-            "Plain-language presentation of recommended listings. "
-            "Include a 'why we picked this' blurb per listing."
+            "Plain-language presentation of listings with a 'why we picked this' blurb per listing. "
+            "If no listings were found, explain clearly and offer broadening search or a waitlist."
         )
+    )
+    listings_found: bool = Field(
+        True,
+        description="False when the tool returned zero results.",
     )
     selected_listing_id: Optional[str] = Field(
         None,
         description="Listing ID the buyer chose, if they made a selection.",
     )
-    next_step: Optional[str] = Field(
-        None,
-        description="Use 'order_creation' once a listing is selected.",
+    buyer_wants_broader_search: bool = Field(
+        False,
+        description="True when the buyer explicitly asks to see more or different options.",
+    )
+    buyer_declined_all: bool = Field(
+        False,
+        description="True when the buyer explicitly declines all shown options.",
+    )
+    buyer_wants_autobuy_waitlist: bool = Field(
+        False,
+        description="True when buyer agrees to be notified / have the autonomous agent buy later.",
+    )
+    advance_to_order: bool = Field(
+        False,
+        description="Set True when selected_listing_id is set.",
     )
 
 
@@ -111,11 +155,11 @@ class OrderOutput(BaseModel):
     response_text: str = Field(
         description="Order summary in plain language ready for buyer confirmation."
     )
+    order_confirmed: bool = Field(
+        False,
+        description="True when the buyer explicitly confirms they want to proceed to payment.",
+    )
     quantity_tonnes: Optional[float] = Field(
         None,
         description="Quantity of tonnes the buyer wants to purchase.",
-    )
-    next_step: Optional[str] = Field(
-        None,
-        description="Remains 'order_creation' until payment is confirmed.",
     )

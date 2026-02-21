@@ -18,29 +18,41 @@ def _init_observability() -> None:
     """
     Wire LangSmith tracing for Pydantic AI agents via OpenTelemetry.
     Gracefully no-ops if the required packages or env vars are absent.
+
+    Key env vars (any one is enough):
+      LANGSMITH_API_KEY  — preferred name
+      LANGSMITH_PROJECT  — project name (string, NOT UUID); defaults to "carbonbridge"
     """
-    api_key = (
-        os.environ.get("LANGSMITH_API_KEY")
-        or os.environ.get("LANGSMITH_API")
-    )
+    api_key = os.environ.get("LANGSMITH_API_KEY")
     if not api_key:
         logger.info("LANGSMITH_API_KEY not set — agent tracing disabled")
         return
 
+    # Always set canonical name so langsmith SDK picks it up regardless of alias
+    os.environ["LANGSMITH_API_KEY"] = api_key
+
     project = os.environ.get("LANGSMITH_PROJECT", "carbonbridge")
+    # Guard: if someone accidentally set this to a UUID, reset to name
+    import re
+    if re.fullmatch(r"[0-9a-f-]{36}", project):
+        logger.warning(
+            "LANGSMITH_PROJECT looks like a UUID (%s). "
+            "LangSmith expects a project NAME string, not an ID. "
+            "Falling back to 'carbonbridge'.",
+            project,
+        )
+        project = "carbonbridge"
+        os.environ["LANGSMITH_PROJECT"] = project
 
     try:
         from langsmith.integrations.otel import configure as langsmith_configure
         from pydantic_ai import Agent
 
-        # Ensure the key is set in env for the SDK to pick up
-        os.environ.setdefault("LANGSMITH_API_KEY", api_key)
-
         langsmith_configure(project_name=project)
         Agent.instrument_all()
-        logger.info("LangSmith tracing enabled (project: %s)", project)
-    except ImportError:
-        logger.warning("langsmith or pydantic_ai not installed — tracing disabled")
+        logger.info("LangSmith tracing enabled — project: '%s'", project)
+    except ImportError as exc:
+        logger.warning("langsmith/pydantic_ai not installed — tracing disabled: %s", exc)
     except Exception as exc:
         logger.warning("Failed to initialize LangSmith tracing: %s", exc)
 

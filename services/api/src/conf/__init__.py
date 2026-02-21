@@ -64,12 +64,13 @@ WIZARD_MODEL = EnvVarSpec(
     id="WIZARD_MODEL", default="gemini-2.5-flash-lite", is_optional=True
 )
 GOOGLE_API_KEY = EnvVarSpec(id="GOOGLE_API_KEY", is_optional=True, is_secret=True)
-GEMINI_API_KEY = EnvVarSpec(id="GEMINI_API", is_optional=True, is_secret=True)
+# GEMINI_API is the secret name set via Polytope; expose as GEMINI_API_KEY too
+GEMINI_API_KEY = EnvVarSpec(id="GEMINI_API_KEY", is_optional=True, is_secret=True)
+GEMINI_API = EnvVarSpec(id="GEMINI_API", is_optional=True, is_secret=True)
+
 ## Observability ##
 
 LANGSMITH_API_KEY = EnvVarSpec(id="LANGSMITH_API_KEY", is_optional=True, is_secret=True)
-# Also accept LANGSMITH_API as alias (used in some envs)
-LANGSMITH_API = EnvVarSpec(id="LANGSMITH_API", is_optional=True, is_secret=True)
 LANGSMITH_PROJECT = EnvVarSpec(
     id="LANGSMITH_PROJECT", default="carbonbridge", is_optional=True
 )

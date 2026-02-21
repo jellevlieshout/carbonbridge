@@ -1,8 +1,8 @@
 """
 Pydantic AI agent factory for the buyer wizard.
 
-The model is configurable via WIZARD_MODEL env var (default: gemini-2.0-flash).
-A new Agent instance is created per-step call since output_type varies by step.
+Model is configurable via WIZARD_MODEL env var (default: gemini-2.5-flash-lite).
+A new Agent instance is created per-step call because output_type varies by step.
 """
 
 import os
@@ -47,7 +47,10 @@ Rules:
 - Always quote prices in EUR.
 - When presenting listings, include a brief "why we picked this" blurb.
 - Call tools when you need live data; wait for results before replying.
-- Confirm your understanding before advancing to the next step.
+- DO NOT ask the buyer to confirm information you already have.
+- If both sector and employees are already shown in the context, skip asking for them.
+- When the buyer accepts an estimate with "ok", "yes", "yeah", "sure" or similar, treat it as confirmed and advance.
+- Populate the structured output fields accurately based on what was said — do not leave transition flags empty when the intent is clear.
 """.strip()
 
 # ── step → output schema mapping ──────────────────────────────────────
@@ -60,6 +63,7 @@ _STEP_OUTPUT_MAP: dict[str, Type[BaseModel]] = {
     "listing_search": RecommendationOutput,
     "recommendation": RecommendationOutput,
     "order_creation": OrderOutput,
+    "autobuy_waitlist": RecommendationOutput,
 }
 
 
@@ -75,15 +79,11 @@ def _build_model() -> GoogleModel:
 
 
 def create_wizard_agent(step: str) -> Agent[WizardDeps, Any]:
-    """
-    Build a single-turn Pydantic AI agent configured for the given wizard step.
-
-    Creates a new instance each call so output_type matches the step schema.
-    """
+    """Build a single-turn Pydantic AI agent configured for the given wizard step."""
     output_type: Type[BaseModel] = _STEP_OUTPUT_MAP.get(step, ProfileIntentOutput)
     model = _build_model()
 
-    agent: Agent[WizardDeps, Any] = Agent(
+    agent: Agent[WizardDeps, Any] = Agent(  # type: ignore[call-overload]
         model,
         deps_type=WizardDeps,
         output_type=output_type,

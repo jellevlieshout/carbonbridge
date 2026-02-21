@@ -5,12 +5,11 @@ Usage from the route:
     async for event in run_wizard_turn(session_id, buyer_id):
         yield sse_event(event)
 
-Responsibilities:
-1. Load WizardSession from Couchbase.
-2. Hydrate WizardState from persisted data + latest user message.
-3. Run the LangGraph graph (single step — one LLM call per turn).
-4. Persist updated step, preferences, and context back to Couchbase.
-5. Yield SSE-compatible event dicts token-by-token + step_change + done.
+Error handling:
+- pydantic_ai.UnexpectedModelBehavior (retry exhaustion, request_limit): recoverable
+  → yields a friendly message and keeps the session at the current step.
+- pydantic_ai.UsageLimitExceeded: same treatment.
+- Any other exception: logs full traceback, yields generic error.
 """
 
 from __future__ import annotations
@@ -19,7 +18,6 @@ import asyncio
 from typing import Any, AsyncGenerator, Dict, Optional, cast
 
 from models.entities.couchbase.wizard_sessions import WizardStep
-
 from models.operations.wizard_sessions import (
     wizard_session_add_message,
     wizard_session_get,
@@ -28,6 +26,7 @@ from models.operations.wizard_sessions import (
     wizard_session_update_step,
 )
 from utils import log
+
 from .graph import get_wizard_graph
 from .state import WizardState, state_from_session
 
@@ -56,16 +55,36 @@ def _error_event(message: str) -> Dict[str, Any]:
 
 
 async def _stream_text(text: str) -> AsyncGenerator[str, None]:
-    """
-    Yield words one at a time with a small delay for a natural streaming feel.
-    Can be replaced with real Pydantic AI token streaming (agent.run_stream())
-    for true per-token delivery.
-    """
+    """Yield words with a short delay for a natural streaming feel."""
     words = text.split(" ")
     for i, word in enumerate(words):
         token = word if i == 0 else f" {word}"
         yield token
         await asyncio.sleep(0.03)
+
+
+# ── recoverable error responses per exception type ────────────────────
+
+_RECOVERABLE_FALLBACK = (
+    "I'm having a little trouble thinking right now — "
+    "please send your message again and I'll continue from where we left off."
+)
+
+
+def _is_pydantic_ai_retry_error(exc: Exception) -> bool:
+    """Return True for Pydantic AI retry-exhaustion and request-limit errors."""
+    try:
+        from pydantic_ai.exceptions import UnexpectedModelBehavior, UsageLimitExceeded
+        return isinstance(exc, (UnexpectedModelBehavior, UsageLimitExceeded))
+    except ImportError:
+        pass
+    # Fallback: match on string representation
+    msg = str(exc)
+    return (
+        "Exceeded maximum ret" in msg
+        or "The next request would exceed" in msg
+        or "request_limit" in msg
+    )
 
 
 # ── main entrypoint ───────────────────────────────────────────────────
@@ -87,7 +106,9 @@ async def run_wizard_turn(
         yield _error_event("Session not found")
         return
 
-    # 2. Get the latest user message from persisted history
+    original_step: str = session.data.current_step
+
+    # 2. Get the latest user message
     latest_user_msg = ""
     for msg in reversed(session.data.conversation_history):
         if msg.role == "user":
@@ -95,70 +116,117 @@ async def run_wizard_turn(
             break
 
     if not latest_user_msg:
-        # First-turn auto-kick
         latest_user_msg = "Hello, I'd like to buy carbon offsets."
 
     # 3. Hydrate state
     initial_state: WizardState = state_from_session(session, latest_user_msg)
 
     # 4. Run the LangGraph graph (one node per turn)
+    final_state: Optional[WizardState] = None
+    response_text = ""
+    graph_error = False
+
     try:
         graph = get_wizard_graph()
-        final_state: WizardState = await graph.ainvoke(initial_state)
+        final_state = await graph.ainvoke(initial_state)
     except Exception as exc:
-        logger.error("Wizard graph error for session %s: %s", session_id, exc)
-        yield _error_event("I hit a technical snag. Please try again in a moment.")
-        return
+        if _is_pydantic_ai_retry_error(exc):
+            logger.warning(
+                "Wizard retry/limit error — session=%s step=%s error=%s: %s",
+                session_id, original_step, type(exc).__name__, exc,
+            )
+            response_text = _RECOVERABLE_FALLBACK
+        else:
+            logger.error(
+                "Wizard graph error — session=%s step=%s error=%s: %s",
+                session_id, original_step, type(exc).__name__, exc,
+                exc_info=True,
+            )
+            response_text = _RECOVERABLE_FALLBACK
+        graph_error = True
 
-    # 5. Extract results from the final state dict
-    response_text: str = final_state.get("response_text") or ""
-    new_step: Optional[str] = final_state.get("next_step")
-    original_step: str = session.data.current_step
-    step_advanced = bool(new_step and new_step != original_step)
+    if final_state is not None:
+        response_text = final_state.get("response_text") or ""
 
-    # 6. Stream response tokens
+    if not response_text:
+        response_text = _RECOVERABLE_FALLBACK
+        graph_error = True
+
+    # 5. Stream response tokens
     full_response = ""
     async for token in _stream_text(response_text):
         full_response += token
         yield _token_event(token)
 
-    # 7. Emit step_change before done (UI updates progress dots first)
+    # 6. Determine step transition
+    new_step: Optional[str] = None
+    step_advanced = False
+
+    if final_state is not None:
+        new_step = final_state.get("next_step")
+        # Ignore internal "complete" / "autobuy_waitlist" as persisted step values
+        # — we keep them as signals but don't advance the persisted step to them
+        # unless they map to a valid WizardStep literal.
+        _valid_steps = {
+            "profile_check", "onboarding", "footprint_estimate",
+            "preference_elicitation", "listing_search",
+            "recommendation", "order_creation",
+        }
+        if new_step and new_step not in _valid_steps:
+            new_step = None  # drop non-persisted step signals
+        step_advanced = bool(new_step and new_step != original_step)
+
+    # 7. Emit step_change before done so UI updates progress dots first
     if step_advanced and new_step:
         yield _step_change_event(new_step)
 
     # 8. Emit done
     yield _done_event(full_response)
 
-    # 9. Persist all updates to Couchbase
+    # 9. Persist all updates to Couchbase (best-effort; log on failure)
     try:
         await wizard_session_add_message(session_id, "assistant", full_response)
 
-        if step_advanced and new_step:
+        if step_advanced and new_step and not graph_error:
             await wizard_session_update_step(session_id, cast(WizardStep, new_step))
 
-        new_prefs = final_state.get("extracted_preferences")
-        if new_prefs:
-            await wizard_session_update_preferences(session_id, new_prefs)
+        if final_state is not None:
+            new_prefs = final_state.get("extracted_preferences")
+            if new_prefs:
+                await wizard_session_update_preferences(session_id, new_prefs)
 
-        context_kwargs: Dict[str, Any] = {}
-        footprint = final_state.get("footprint_estimate")
-        if footprint:
-            context_kwargs["footprint_context"] = footprint
-        listings = final_state.get("recommended_listings") or []
-        if listings:
-            context_kwargs["recommended_listing_ids"] = [
-                item.get("id") for item in listings if item.get("id")
-            ]
-        draft_id = final_state.get("draft_order_id")
-        if draft_id:
-            context_kwargs["draft_order_id"] = draft_id
-        draft_total = final_state.get("draft_order_total_eur")
-        if draft_total is not None:
-            context_kwargs["draft_order_total_eur"] = draft_total
-        if context_kwargs:
-            await wizard_session_save_context(session_id, **context_kwargs)
+            context_kwargs: Dict[str, Any] = {}
+            footprint = final_state.get("footprint_estimate")
+            if footprint:
+                context_kwargs["footprint_context"] = footprint
+            listings = final_state.get("recommended_listings") or []
+            if listings:
+                context_kwargs["recommended_listing_ids"] = [
+                    item.get("id") for item in listings if item.get("id")
+                ]
+            draft_id = final_state.get("draft_order_id")
+            if draft_id:
+                context_kwargs["draft_order_id"] = draft_id
+            draft_total = final_state.get("draft_order_total_eur")
+            if draft_total is not None:
+                context_kwargs["draft_order_total_eur"] = draft_total
+
+            # Persist autonomous-buy handoff intent
+            if final_state.get("autobuy_opt_in"):
+                context_kwargs["autobuy_opt_in"] = True
+                snapshot = final_state.get("autobuy_criteria_snapshot")
+                if snapshot:
+                    context_kwargs["autobuy_criteria_snapshot"] = snapshot
+
+            search_broadened = final_state.get("search_broadened")
+            if search_broadened:
+                context_kwargs["search_broadened"] = True
+
+            if context_kwargs:
+                await wizard_session_save_context(session_id, **context_kwargs)
 
     except Exception as exc:
         logger.warning(
-            "Failed to persist wizard turn for session %s: %s", session_id, exc
+            "Failed to persist wizard turn — session=%s step=%s: %s",
+            session_id, original_step, exc,
         )
