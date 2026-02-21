@@ -3,6 +3,7 @@ import { useStripe, useElements, PaymentElement } from "@stripe/react-stripe-js"
 import { Button } from "~/modules/shared/ui/button";
 import { Alert, AlertDescription } from "~/modules/shared/ui/alert";
 import { Loader2 } from "lucide-react";
+import { orderConfirmPayment } from "@clients/api/orders";
 
 interface CheckoutFormProps {
     clientSecret: string;
@@ -27,8 +28,7 @@ export function CheckoutForm({ clientSecret, onSuccess }: CheckoutFormProps) {
         const { error, paymentIntent } = await stripe.confirmPayment({
             elements,
             confirmParams: {
-                // Return URL isn't strictly necessary if redirect is "if_required"
-                // But typically you'd redirect. We will use `redirect: "if_required"`
+                return_url: `${window.location.origin}/buyer/credits`,
             },
             redirect: "if_required",
         });
@@ -36,6 +36,7 @@ export function CheckoutForm({ clientSecret, onSuccess }: CheckoutFormProps) {
         if (error) {
             setErrorMessage(error.message ?? "An error occurred during payment.");
         } else if (paymentIntent && paymentIntent.status === "succeeded") {
+            await orderConfirmPayment(paymentIntent.id);
             if (onSuccess) onSuccess();
         }
 

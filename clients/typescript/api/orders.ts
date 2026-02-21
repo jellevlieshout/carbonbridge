@@ -41,3 +41,7 @@ export async function orderCreate(req: CreateOrderRequest): Promise<Order> {
 export async function orderCancel(orderId: string): Promise<Order> {
     return await post(`/orders/${orderId}/cancel`, {});
 }
+
+export async function orderConfirmPayment(paymentIntentId: string): Promise<Order> {
+    return await post('/orders/confirm-payment', { payment_intent_id: paymentIntentId });
+}

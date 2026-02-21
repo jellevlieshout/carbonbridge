@@ -1,11 +1,12 @@
-import React from "react";
-import { useOrders } from "~/modules/shared/queries/useOrders";
+import React, { useEffect, useRef } from "react";
+import { useSearchParams } from "react-router";
+import { useOrders, useConfirmPayment } from "~/modules/shared/queries/useOrders";
 import { useListingQuery } from "~/modules/shared/queries/useListing";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/modules/shared/ui/card";
 import { Badge } from "~/modules/shared/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "~/modules/shared/ui/table";
 import { Leaf, Award, Clock } from "lucide-react";
-import { format } from "date-fns";
+import { toast } from "sonner";
 
 function ListingCell({ listingId }: { listingId: string }) {
     const { data: listing, isLoading } = useListingQuery(listingId);
@@ -22,7 +23,24 @@ function ListingCell({ listingId }: { listingId: string }) {
 }
 
 export default function BuyerCreditsPage() {
+    const [searchParams, setSearchParams] = useSearchParams();
+    const confirmPayment = useConfirmPayment();
+    const confirmedRef = useRef(false);
     const { data: orders, isLoading, isError, error } = useOrders();
+
+    useEffect(() => {
+        const paymentIntentId = searchParams.get("payment_intent");
+        const redirectStatus = searchParams.get("redirect_status");
+
+        if (paymentIntentId && redirectStatus === "succeeded" && !confirmedRef.current) {
+            confirmedRef.current = true;
+            confirmPayment.mutate(paymentIntentId, {
+                onSuccess: () => toast.success("Payment confirmed!"),
+                onError: () => toast.error("Could not confirm payment. Please contact support."),
+            });
+            setSearchParams({}, { replace: true });
+        }
+    }, [searchParams]);
 
     if (isLoading) {
         return (
