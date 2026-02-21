@@ -3,6 +3,7 @@ import { type RouteConfig, index, route, layout } from "@react-router/dev/routes
 export default [
   layout("components/layout/DashboardLayout.tsx", [
     route("buyer/dashboard", "routes/dashboard.tsx"),
+    route("seller/listings", "routes/seller-listings.tsx"),
   ]),
   index("routes/home.tsx"),
   route("callback", "routes/callback.tsx"),

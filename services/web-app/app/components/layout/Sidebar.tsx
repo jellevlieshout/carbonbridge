@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { LayoutDashboard, Leaf, ShoppingCart, Activity, FileText, Settings, Bot } from 'lucide-react';
+import { LayoutDashboard, Leaf, ShoppingCart, Activity, FileText, Settings, Bot, List } from 'lucide-react';
 import { NavLink } from 'react-router';
 
 const navItems = [
     { label: 'Overview', icon: LayoutDashboard, href: '/buyer/dashboard' },
+    { label: 'My Listings', icon: List, href: '/seller/listings' },
     { label: 'My Credits', icon: Leaf, href: '/buyer/credits' },
     { label: 'Marketplace', icon: ShoppingCart, href: '/marketplace' },
     { label: 'Agent Activity', icon: Activity, href: '/buyer/agent' },
