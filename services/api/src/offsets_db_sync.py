@@ -64,12 +64,19 @@ def _normalize_category(raw: str | None) -> str | None:
 def _normalize_registry(raw: str | None) -> str | None:
     if not raw:
         return None
-    upper = raw.strip().upper()
-    # Common aliases
-    if upper in ("VERRA", "VCS"):
+    key = raw.strip().lower().replace("-", " ").replace("_", " ")
+    # Map known names / aliases to short codes
+    if key in ("verra", "vcs"):
         return "VCS"
-    if upper in ("GOLD STANDARD", "GLD", "GS"):
+    if key in ("gold standard", "gld", "gs"):
         return "GLD"
+    if key in ("american carbon registry", "acr"):
+        return "ACR"
+    if key in ("art trees", "art"):
+        return "ART"
+    if key in ("climate action reserve", "car"):
+        return "CAR"
+    upper = raw.strip().upper()
     if upper in VALID_REGISTRIES:
         return upper
     return None
@@ -177,12 +184,14 @@ async def run_offsets_db_sync() -> dict:
             resp = await client.get(OFFSETS_DB_ZIP_URL)
             resp.raise_for_status()
 
-        # Extract CSV from zip
+        # Extract projects CSV from zip (not credits.csv)
         with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
             csv_names = [n for n in zf.namelist() if n.endswith(".csv")]
             if not csv_names:
                 raise ValueError("No CSV file found in zip archive")
-            csv_bytes = zf.read(csv_names[0])
+            # Prefer projects.csv over credits.csv
+            target = next((n for n in csv_names if "projects" in n.lower()), csv_names[0])
+            csv_bytes = zf.read(target)
 
         logger.info(f"Parsing CSV ({len(csv_bytes):,} bytes)")
         df = pd.read_csv(io.BytesIO(csv_bytes), low_memory=False)
