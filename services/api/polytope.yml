@@ -1,0 +1,132 @@
+tools:
+  api:
+    info: "'Base' module for other services in this file to build on."
+    params:
+      - id: cmd
+        info: The command to run
+        type: [default, str, ./bin/run]
+      - id: dev-mode
+        info: Whether to run in dev mode (with hot reload, debugging)
+        type: [default, bool, true]
+      - id: port
+        info: The port the API will run on
+        type: [default, int, 3030]
+      - id: restart-policy
+        info: Restart policy for the container.
+        type: [default, [enum, always, never, on-failure], always]
+      - id: id
+        info: The container ID to use.
+        type: [default, str, api]
+      - id: create
+        info: Whether to create the container.
+        type: [default, [enum, never, always, when-missing], when-missing]
+    run:
+      - tool: polytope/python
+        args:
+          id: pt.param id
+          image: astral/uv:python3.13-bookworm-slim
+          code: { type: repo, path: . }
+          cmd: pt.param cmd
+          restart:
+            policy: pt.param restart-policy
+          services: |-
+            #pt-js
+            params.cmd === "./bin/run"
+              ? [{ id: "api", ports: [{ protocol: "http", port: params.port, 'expose-as': params.port }] }]
+              : null;
+          env:
+            - { name: HTTP_EXPOSE_ERRORS, value: pt.param dev-mode }
+            - { name: HTTP_AUTORELOAD, value: pt.param dev-mode }
+            - { name: HTTP_PORT, value: pt.param port }
+            - { name: LOG_LEVEL, value: INFO }
+
+            - { name: COUCHBASE_HOST, value: pt.value couchbase-host }
+            - { name: COUCHBASE_USERNAME, value: pt.secret couchbase-username }
+            - { name: COUCHBASE_PASSWORD, value: pt.secret couchbase-password }
+            - { name: COUCHBASE_BUCKET, value: main }
+            - { name: COUCHBASE_PROTOCOL, value: couchbase }
+
+            - { name: AUTH_OIDC_JWK_URL, value: http://curity:8443/oauth/v2/oauth-anonymous/jwks }
+            - { name: AUTH_OIDC_AUDIENCE, value: web-app }
+            - { name: AUTH_OIDC_ISSUER, value: Curity }
+
+            - { name: OPENROUTER_PROVISIONING_API_KEY, value: pt.secret openrouter-provisioning-api-key }
+          mounts:
+            - { path: /root/.cache/, source: { type: volume, scope: project, id: api-dependency-cache } }
+            - { path: /clients/python, source: { type: repo, path: /clients/python, repo: "#pt-clj pt/module-project-ref" } }
+            - { path: /models/python, source: { type: repo, path: /models/python, repo: "#pt-clj pt/module-project-ref" } }
+  api-add:
+    info: Adds one or more packages to the pyproject.toml file.
+    params:
+      - id: packages
+        info: comma/whitespace-separated list of python packages to add to pyproject.toml
+        type: str
+    run:
+      - tool: api
+        args:
+          id: api-add
+          restart-policy: never
+          cmd: '#pt-js "./bin/add-dependencies " + params.packages.replace(/[\s,]+/g, " ")'
+          create: always
+
+  api-add-couchbase-client:
+    info: Run before add-couchbase-model. Adds Couchbase client library with all interaction functions and registers add-couchbase-model tool to polytope.yml.
+    params: []
+    run:
+      - tool: polytope/scaffold
+        id: add-couchbase-client
+        args:
+          actions:
+            - template: {type: repo, repo: "bluetext-io/bluetext", path: /templates/lib/py/couchbase-client}
+              path: /lib/py/couchbase-client
+              on-conflict: skip
+            - template: {type: repo, repo: "bluetext-io/bluetext", path: /templates/api/bin/add-couchbase-model}
+              path: /services/api/bin/add-couchbase-model
+              on-conflict: skip
+
+      - tool: api
+        after: { step: add-couchbase-client }
+        args:
+          id: api-add-couchbase-client
+          cmd: ./bin/add-couchbase-client
+          restart-policy: never
+      - id: reload-api
+        tool: api
+
+  api-add-temporal-client:
+    info: Adds Temporal client library with workflow orchestration support and registers add-temporal-workflow tool to polytope.yml.
+    params: []
+    run:
+      - tool: polytope/scaffold
+        id: add-temporal-client
+        args:
+          actions:
+            - template: {type: repo, repo: "bluetext-io/bluetext", path: /templates/lib/py/temporal-client}
+              path: /lib/py/temporal-client
+              on-conflict: skip
+            - template: {type: repo, repo: "bluetext-io/bluetext", path: /templates/api/bin/add-temporal-workflow}
+              path: /services/api/bin/add-temporal-workflow
+              on-conflict: skip
+
+      - tool: api
+        after: { step: add-temporal-client }
+        args:
+          id: api-add-temporal-client
+          cmd: ./bin/add-temporal-client
+          restart-policy: never
+      - id: reload-api
+        tool: api
+
+  api-add-couchbase-model:
+    info: Scaffold a new Python script and add it to pyproject.toml. Run this to create test scripts for your agents!
+    params:
+      - id: name
+        info: Scaffolds a new Couchbase model with CRUD operations, Pydantic models, and automatic integration.
+        type: str
+    run:
+      - tool: api
+        args:
+          id: api-add-couchbase-model
+          restart-policy: never
+          cmd: ./bin/add-couchbase-model {pt.param name}
+          create: always

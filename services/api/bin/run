@@ -1,0 +1,7 @@
+#!/bin/sh
+
+. "$(dirname "$0")/init"
+
+uv sync
+
+uv run python src/main.py

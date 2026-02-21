@@ -1,0 +1,36 @@
+tools: 
+  add-phantom-token-to-kong:
+    info: "Configures Kong (if present) to work with the phantom token pattern using Curity."
+    run:
+      - tool: polytope/python
+        args:
+          image: python:3.11.8-slim-bookworm
+          id: phantom-token-kong
+          code: { type: repo, path: . }
+          cmd: ./bin/kong
+          mounts:        
+            - { path: /workspace, source: { type: host, path: . }}
+  curity:
+    info: "Runs the Curity Identity Server (blueprint: curity-identity-provider)"
+    run:
+      - tool: polytope/curity
+        args:
+          image: curity.azurecr.io/curity/idsvr:10.4.0
+          config-file: { type: host, path: ./services/curity/config.xml }
+          restart: { policy: always }
+          password: "{pt.secret curity-password}"
+          env:
+            - { name: ADMIN, value: true }
+            - { name: CURITY_BASE_URL, value: pt.value curity-base-url }
+            - { name: BASE_URL, value: pt.value base-url }
+            - { name: WEB_APP_URL, value: pt.value web-app-url }
+            - { name: AGENT_BASE_URL, value: pt.value web-app-url }
+            - { name: POSTGRES_USERNAME, value: pt.secret postgres-username }
+            - { name: MAILGUN_SMTP_USERNAME, value: pt.secret mailgun-smtp-username }
+            - { name: MAILGUN_SMTP_PASSWORD, value: pt.secret mailgun-smtp-password }
+          mounts:
+            - { path: /opt/idsvr/usr/bin/post-commit-cli-scripts, source: { type: host, path: ./services/curity/post-commit-cli-scripts }}
+            - { path: /opt/idsvr/etc/init/curity-users.xml, source: { type: host, path: ./services/curity/users.xml }}
+            - { path: /opt/idsvr/usr/share/templates, source: { type: host, path: ./services/curity/curity-ui-build/curity/templates }}
+            - { path: /opt/idsvr/usr/share/messages, source: { type: host, path: ./services/curity/curity-ui-build/curity/messages }}
+            - { path: /opt/idsvr/usr/share/webroot, source: { type: host, path: ./services/curity/curity-ui-build/curity/webroot }}

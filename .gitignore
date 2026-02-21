@@ -1,0 +1,68 @@
+# Operating System
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Editor / IDE settings
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+.env
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+*.egg-info/
+dist/
+build/
+.eggs/
+parts/
+var/
+sdist/
+develop-eggs/
+
+# Access tokens and secrets
+.env
+.env.*
+!.env.example
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.npm/
+.yarn/
+
+# Logs
+logs/
+*.log
+
+# React/Web
+.react-router/
+
+# Polytope
+.polytope-repos.yml
+set_values_and_secrets
+set_values_and_secrets_local
+deploy-script
+
+# Ignore secrets files
+**/secrets.yml
+**/values.yml

@@ -1,0 +1,86 @@
+tools:
+  web-app:
+    info: "Base module for other services in this file to build on."
+    params:
+      - id: cmd
+        info: The command to run
+        type: [default, str, ./bin/run]
+      - id: api-base-url
+        info: Public base URL for the API, if one exists.
+        type: [default, str, http://localhost:3030]
+      - id: port
+        info: The port on which the service will be exposed.
+        type: [default, int, 51732]
+      - id: restart-policy
+        info: Restart policy for the container.
+        type: [default, [enum, always, on-failure], always]
+      - id: id
+        info: The container ID to use.
+        type: [default, str, backend]
+      - id: create
+        info: Whether to create the container.
+        type: [default, [enum, never, always, when-missing], when-missing]
+    run:
+      - tool: polytope/node
+        args:
+          id: web-app
+          image: oven/bun:alpine
+          create: pt.param create
+          code: { type: repo, path: . }
+          cmd: pt.param cmd
+          restart:
+            policy: pt.param restart-policy
+          services: |-
+            #pt-js
+            params.cmd === "./bin/run"
+              ? [{ id: "web-app", ports: [{ protocol: "http", port: params.port, 'expose-as': params.port }] }]
+              : null;
+          env:
+            - { name: PORT, value: pt.param port }
+            - { name: VITE_API_BASE_URL, value: pt.param api-base-url }
+            - { name: LOG_LEVEL, value: INFO }
+          mounts:
+            - { path: /root/.cache/, source: { type: volume, scope: project, id: web-app-home-cache }}
+            - { path: /root/.bun/, source: { type: volume, scope: project, id: web-app-bun-cache }}
+            - { path: /app/node_modules/, source: { type: volume, scope: project, id: web-app-node-services }}
+            - { path: /clients/typescript, source: { type: repo, path: /clients/typescript, repo: "#pt-clj pt/module-project-ref" } }
+  web-app-add:
+    info: Adds one or more packages to the package.json file.
+    params:
+      - id: packages
+        info: comma/whitespace-separated list of npm packages to add to package.json
+        type: str
+    run:
+      - tool: web-app
+        args:
+          id: web-app-add
+          restart-policy: on-failure
+          cmd: '#pt-js "bun add " + params.packages.replace(/[\s,]+/g, " ")'
+          create: always
+
+  web-app-integrate-with-phantom-token-handler-secured-api:
+    info: Adds a Phantom Token Handler Secured API client to a react web app.
+    params: []
+    run:
+      - tool: polytope/scaffold
+        id: add-phantom-token-handler-secured-api-client
+        args:
+          actions:
+            - template: {type: repo, repo: "bluetext-io/bluetext", path: /templates/integrations/typescript/react/phantom-token-handler-secured-api}
+              path: /services/web-app/app/integrations/api
+              on-conflict: skip
+
+      - tool: polytope/scaffold
+        id: add-phantom-token-handler-top-bar-component
+        args:
+          actions:
+            - template: {type: repo, repo: "bluetext-io/bluetext", path: /templates/components/react/phantom-token-handler-top-bar}
+              path: /services/web-app/app/components/top-bar
+              on-conflict: skip
+      
+      - tool: web-app
+        args:
+          id: web-app-add
+          restart-policy: on-failure
+          cmd: "bun add @curity/token-handler-js-assistant"
+          create: always

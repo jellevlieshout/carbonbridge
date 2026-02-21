@@ -1,0 +1,13 @@
+{
+  "name": "@bluetext/clients",
+  "version": "0.0.0",
+  "private": true,
+  "main": "./index.ts",
+  "peerDependencies": {
+    "@curity/token-handler-js-assistant": "^1.2.2",
+    "react": "^19.1.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
+}

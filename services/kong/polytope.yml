@@ -1,0 +1,26 @@
+tools:
+  kong:
+    info: "Runs the Kong API Gateway"
+    run:
+      - tool: polytope/kong!simple
+        args:
+          image: gcr.io/arched-inkwell-420116/kong-oauth-proxy:latest
+          config-file: { type: host, path: ./services/kong/kong.yml }
+          autoreload: true
+          env:
+            - { name: KONG_ADMIN_LISTEN, value: "0.0.0.0:8001" }
+            - { name: KONG_PROXY_LISTEN, value: "0.0.0.0:8000" }
+            - { name: KONG_NGINX_HTTP_LUA_SHARED_DICT, value: 'phantom-token 10m' }
+            - { name: KONG_PLUGINS, value: 'bundled,oauth-proxy,phantom-token' }
+            - { name: CURITY_PHANTOM_TOKEN_CLIENT_SECRET, value: pt.secret curity-phantom-token-client-secret }
+            - { name: KONG_OAUTH_PROXY_COOKIE_KEY, value: pt.secret kong-oauth-proxy-cookie-key }
+            - { name: WEB_APP_URL, value: pt.value web-app-url }
+            - { name: BASE_URL, value: pt.value base-url }
+            - { name: CURITY_BASE_URL, value: pt.value curity-base-url }
+          plugins:
+            - { name: phantom-token, package: kong-phantom-token, version: 2.0.0 }
+
+          services:
+            - { id: kong, ports: [{ port: 8000, protocol: http, expose-as: 8000 }] }
+            - { id: kong-admin, ports: [{ port: 8001, protocol: http, expose-as: 8003 }] }
+

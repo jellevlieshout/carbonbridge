@@ -1,0 +1,96 @@
+tools:
+  postgres:
+    info: |
+      Runs a PostgreSQL database server in dev mode.
+      Uses the persistent volume `postgres-data-postgres`.
+      Exposes the PostgreSQL port on `postgres:5432` within the job, and at `localhost:5432` on the host.
+      Default database: idsvr, default user: admin
+
+    run:
+      - tool: polytope/postgres
+        args:
+          image: postgres:16.2
+          env:
+            - { name: POSTGRES_DB, value: idsvr }
+            - { name: POSTGRES_USER, value: pt.secret postgres-username }
+            - { name: POSTGRES_PASSWORD, value: pt.secret postgres-password }
+            - { name: POSTGRES_HOST_AUTH_METHOD, value: scram-sha-256 }
+          restart: { policy: on-failure }
+          data-path: /var/lib/postgresql/data
+          service-id: postgres
+          data-volume: { id: postgres-data, type: volume, scope: project }
+          scripts:
+            - { type: host, path: ./services/curity/db.sql }
+            
+  psql:
+    info: Runs the PSQL shell.
+    params:
+      - id: image
+        info: The Docker image to run.
+        name: Image
+        type:
+          - default
+          - docker-image
+          - public.ecr.aws/docker/library/postgres:16.2
+      - id: hostname
+        info: The PostgreSQL hostname to connect to.
+        name: Hostname
+        type: [default, str, postgres]
+      - id: port
+        info: The PostgreSQL port to connect to.
+        name: Port
+        type: [default, int, 5432]
+      - id: database
+        info: The database name.
+        name: Database
+        type: [default, str, idsvr]
+      - id: username
+        info: The PostgreSQL user.
+        name: Username
+        type: [default, str, admin]
+      - id: password
+        info: The password for the given user.
+        name: Password
+        type: [maybe, str]
+      - id: command
+        info: The command to run. If unset, runs an interactive session.
+        name: Command
+        type: [maybe, str]
+    run:
+      - tool: polytope/container
+        args:
+          image: pt.param image
+          env:
+            - name: PG_PASSWORD
+              value: pt.param password
+          id: psql
+          cmd: |
+            #pt-clj
+            (->> ["psql"
+                  (str "--host=" (:hostname params))
+                  (str "--user=" (:username params))
+                  (str "--dbname=" (:database params))
+                  (when (:command params)
+                    (str "--command=" (:command params)))]
+                 (remove nil?))
+
+  pgweb:
+    info: |
+      Runs pgweb - a web-based PostgreSQL database browser service. 
+      To run this module call the mcp "run" tool with "pgweb" as module argument.
+      Connects to the idsvr database with user "admin".
+      The pgweb service will be available at http://localhost:8081.
+    run:
+      - tool: polytope/container
+        args:
+          image: sosedoff/pgweb:0.15.0
+          id: pgweb
+          restart:
+            policy: always
+          services:
+            - id: pgweb
+              ports:
+                - {protocol: http, port: 8081, expose-as: 8081}
+          env:
+            - {name: PGWEB_DATABASE_URL, value: pt.secret postgres-connection-string }
+          create: when-missing

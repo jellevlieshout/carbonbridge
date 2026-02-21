@@ -1,0 +1,9 @@
+include:
+  - api
+  - config-manager
+  - couchbase
+  - curity
+  - postgres
+  - kong
+  - web-app
+  - resonate
