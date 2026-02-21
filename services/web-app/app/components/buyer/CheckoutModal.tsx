@@ -76,7 +76,7 @@ export function CheckoutModal({
         setOrderId(null);
         toast.success("Payment successful!");
         onClose();
-        navigate("/buyer-credits");
+        navigate("/buyer/credits");
     };
 
     const handleClose = () => {

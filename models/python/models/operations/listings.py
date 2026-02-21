@@ -81,41 +81,39 @@ async def listing_get_by_seller(seller_id: str) -> List[Listing]:
 
 
 async def listing_reserve_quantity(listing_id: str, quantity: float) -> bool:
-    """Atomically reserve quantity using Couchbase sub-document MutateIn."""
-    import couchbase.subdocument as SD
-    from couchbase.options import MutateInOptions
+    """Reserve (or release) quantity on a listing via read-modify-write.
 
-    keyspace = Listing.get_keyspace()
-    collection = await keyspace.get_collection()
+    Pass a negative *quantity* to release a previous reservation.
+    Not fully atomic under concurrency — acceptable for hackathon;
+    production would need a CAS-guarded loop.
+    """
     try:
-        await collection.mutate_in(listing_id, [
-            SD.increment("quantity_reserved", quantity),
-        ])
-        # Verify we haven't over-reserved (not fully atomic — see note below)
-        # NOTE: A concurrent request could also increment between our increment
-        # and this read, causing both to roll back. Acceptable for hackathon;
-        # production would need a CAS-guarded read-modify-write loop.
         listing = await Listing.get(listing_id)
-        if listing and (listing.data.quantity_reserved > listing.data.quantity_tonnes - listing.data.quantity_sold):
-            await collection.mutate_in(listing_id, [
-                SD.decrement("quantity_reserved", quantity),
-            ])
+        if not listing:
             return False
+        new_reserved = listing.data.quantity_reserved + quantity
+        # When releasing (negative qty), don't let reserved go below 0
+        if quantity < 0:
+            new_reserved = max(new_reserved, 0.0)
+        # When reserving, check we don't exceed available
+        available = listing.data.quantity_tonnes - listing.data.quantity_sold
+        if new_reserved > available:
+            return False
+        listing.data.quantity_reserved = new_reserved
+        await Listing.update(listing)
         return True
     except Exception:
         return False
 
 
 async def listing_release_reservation(listing_id: str, quantity: float) -> bool:
-    """Release reserved quantity using Couchbase sub-document MutateIn."""
-    import couchbase.subdocument as SD
-
-    keyspace = Listing.get_keyspace()
-    collection = await keyspace.get_collection()
+    """Release reserved quantity on a listing."""
     try:
-        await collection.mutate_in(listing_id, [
-            SD.decrement("quantity_reserved", quantity),
-        ])
+        listing = await Listing.get(listing_id)
+        if not listing:
+            return False
+        listing.data.quantity_reserved = max(listing.data.quantity_reserved - quantity, 0.0)
+        await Listing.update(listing)
         return True
     except Exception:
         return False
@@ -123,20 +121,15 @@ async def listing_release_reservation(listing_id: str, quantity: float) -> bool:
 
 async def listing_confirm_sale(listing_id: str, quantity: float) -> bool:
     """Move quantity from reserved to sold."""
-    import couchbase.subdocument as SD
-
-    keyspace = Listing.get_keyspace()
-    collection = await keyspace.get_collection()
     try:
-        await collection.mutate_in(listing_id, [
-            SD.decrement("quantity_reserved", quantity),
-            SD.increment("quantity_sold", quantity),
-        ])
-        # Check if sold out
         listing = await Listing.get(listing_id)
-        if listing and listing.data.quantity_sold >= listing.data.quantity_tonnes:
+        if not listing:
+            return False
+        listing.data.quantity_reserved = max(listing.data.quantity_reserved - quantity, 0.0)
+        listing.data.quantity_sold += quantity
+        if listing.data.quantity_sold >= listing.data.quantity_tonnes:
             listing.data.status = "sold_out"
-            await Listing.update(listing)
+        await Listing.update(listing)
         return True
     except Exception:
         return False

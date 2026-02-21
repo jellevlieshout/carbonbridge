@@ -11,6 +11,7 @@ from models.operations.orders import (
     order_create,
     order_get,
     order_get_by_buyer,
+    order_get_by_payment_intent,
     order_cancel,
     order_set_payment_intent,
     order_update_status,
@@ -257,6 +258,50 @@ async def route_order_cancel(
 
     cancelled = await order_cancel(order_id)
     return _order_to_response(cancelled)
+
+
+# ---------------------------------------------------------------------------
+# POST /orders/confirm-payment — verify payment with Stripe and update order
+# ---------------------------------------------------------------------------
+
+class ConfirmPaymentRequest(BaseModel):
+    payment_intent_id: str
+
+
+@router.post("/confirm-payment", response_model=OrderResponse)
+async def route_confirm_payment(
+    body: ConfirmPaymentRequest,
+    user: dict = Depends(require_authenticated),
+):
+    order = await order_get_by_payment_intent(body.payment_intent_id)
+    if not order:
+        raise HTTPException(status_code=404, detail="No order found for this payment")
+    if order.data.buyer_id != user["sub"]:
+        raise HTTPException(status_code=403, detail="Not your order")
+    if order.data.status != "pending":
+        return _order_to_response(order)
+
+    s = _get_stripe()
+    intent = s.PaymentIntent.retrieve(body.payment_intent_id)
+
+    if intent.status == "succeeded":
+        await order_update_payment_status(order.id, "succeeded")
+        await order_update_status(order.id, "completed")
+        await order_record_ledger_entries(order.id)
+
+        for li in order.data.line_items:
+            listing = await listing_get(li.listing_id)
+            if listing:
+                listing.data.quantity_reserved -= li.quantity
+                listing.data.quantity_sold += li.quantity
+                if listing.data.quantity_sold >= listing.data.quantity_tonnes:
+                    listing.data.status = "sold_out"
+                await listing_update(listing)
+
+        logger.info(f"Order {order.id} completed via payment confirmation")
+        order = await order_get(order.id)
+
+    return _order_to_response(order)
 
 
 # ---------------------------------------------------------------------------
