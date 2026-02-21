@@ -495,6 +495,25 @@ async def run_seed() -> dict:
         u["key"] = key
     logger.info(f"Seeded {counts['users']} users")
 
+    # ---- TigerBeetle Accounts ----
+    try:
+        from clients.tigerbeetle import ensure_platform_account, create_user_accounts
+
+        ensure_platform_account()
+        logger.info("TigerBeetle: platform escrow account ready")
+
+        for u in all_users:
+            key = u["key"]
+            user = await User.get(key)
+            if user and not user.data.tigerbeetle_pending_account_id:
+                pending_id, settled_id = create_user_accounts()
+                user.data.tigerbeetle_pending_account_id = pending_id
+                user.data.tigerbeetle_settled_account_id = settled_id
+                await User.update(user)
+                logger.info(f"TigerBeetle: created accounts for {key}")
+    except Exception as e:
+        logger.warning(f"TigerBeetle seeding skipped (not running?): {e}")
+
     # ---- Listings ----
     for l in _build_listings():
         key = l.pop("key")

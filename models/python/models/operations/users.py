@@ -1,4 +1,6 @@
-from typing import Any, Dict, Optional
+import asyncio
+from typing import Any, Dict, Optional, Tuple
+
 from models.entities.couchbase.users import User, UserData, BuyerProfile
 
 
@@ -75,3 +77,26 @@ async def user_disable_autonomous_agent(user_id: str) -> User:
     if user.data.buyer_profile:
         user.data.buyer_profile.autonomous_agent_enabled = False
     return await User.update(user)
+
+
+async def ensure_tigerbeetle_accounts(user_id: str) -> Tuple[int, int]:
+    """Ensure TigerBeetle accounts exist for a user, creating them if needed.
+    Returns (pending_account_id, settled_account_id).
+    """
+    user = await User.get(user_id)
+    if not user:
+        raise ValueError(f"User with ID {user_id} not found")
+
+    if user.data.tigerbeetle_pending_account_id and user.data.tigerbeetle_settled_account_id:
+        return (user.data.tigerbeetle_pending_account_id, user.data.tigerbeetle_settled_account_id)
+
+    from clients.tigerbeetle import create_user_accounts
+
+    loop = asyncio.get_event_loop()
+    pending_id, settled_id = await loop.run_in_executor(None, create_user_accounts)
+
+    user.data.tigerbeetle_pending_account_id = pending_id
+    user.data.tigerbeetle_settled_account_id = settled_id
+    await User.update(user)
+
+    return (pending_id, settled_id)

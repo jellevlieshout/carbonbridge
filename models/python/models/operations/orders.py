@@ -1,6 +1,10 @@
+import asyncio
+import logging
 from typing import List, Optional
 from datetime import datetime, timezone
 from models.entities.couchbase.orders import Order, OrderData, OrderLineItem
+
+logger = logging.getLogger(__name__)
 
 
 async def order_create(buyer_id: str, line_items: List[OrderLineItem], total_eur: float) -> Order:
@@ -76,3 +80,71 @@ async def order_get_by_payment_intent(payment_intent_id: str) -> Optional[Order]
         if data_dict:
             return Order(id=row["id"], data=data_dict)
     return None
+
+
+async def order_record_ledger_entries(order_id: str) -> None:
+    """Record double-entry ledger transfers in TigerBeetle for a completed order.
+    Best-effort: errors are logged but don't block order completion.
+    """
+    try:
+        from clients.tigerbeetle import (
+            ensure_platform_account,
+            create_transfer,
+            PLATFORM_ESCROW_ACCOUNT_ID,
+            TRANSFER_CODE_PURCHASE,
+            TRANSFER_CODE_SETTLEMENT,
+        )
+        from models.operations.users import ensure_tigerbeetle_accounts
+        from models.operations.listings import listing_get
+
+        order = await Order.get(order_id)
+        if not order:
+            logger.warning(f"Ledger: order {order_id} not found, skipping")
+            return
+
+        loop = asyncio.get_event_loop()
+
+        # Ensure platform escrow account exists
+        await loop.run_in_executor(None, ensure_platform_account)
+
+        # Ensure buyer has TB accounts
+        buyer_pending_id, buyer_settled_id = await ensure_tigerbeetle_accounts(order.data.buyer_id)
+
+        for li in order.data.line_items:
+            listing = await listing_get(li.listing_id)
+            if not listing:
+                logger.warning(f"Ledger: listing {li.listing_id} not found, skipping line item")
+                continue
+
+            seller_id = listing.data.seller_id
+            _seller_pending_id, seller_settled_id = await ensure_tigerbeetle_accounts(seller_id)
+
+            amount_cents = int(round(li.subtotal * 100))
+
+            # Transfer 1: buyer settled -> platform escrow (purchase)
+            await loop.run_in_executor(
+                None,
+                create_transfer,
+                buyer_settled_id,
+                PLATFORM_ESCROW_ACCOUNT_ID,
+                amount_cents,
+                TRANSFER_CODE_PURCHASE,
+            )
+
+            # Transfer 2: platform escrow -> seller settled (settlement)
+            await loop.run_in_executor(
+                None,
+                create_transfer,
+                PLATFORM_ESCROW_ACCOUNT_ID,
+                seller_settled_id,
+                amount_cents,
+                TRANSFER_CODE_SETTLEMENT,
+            )
+
+            logger.info(
+                f"Ledger: buyer {order.data.buyer_id} -> platform -> seller {seller_id} "
+                f"amount={amount_cents}c for listing {li.listing_id}"
+            )
+
+    except Exception as e:
+        logger.error(f"Ledger: failed to record entries for order {order_id}: {e}")

@@ -9,8 +9,15 @@ from fastapi import APIRouter, Depends, Header, HTTPException, status
 from pydantic import BaseModel
 
 from models.entities.couchbase.orders import OrderLineItem
-from models.operations.listings import listing_get, listing_search
-from models.operations.orders import order_create, order_get, order_update_status, order_set_payment_intent
+from models.operations.listings import listing_get, listing_search, listing_update
+from models.operations.orders import (
+    order_create,
+    order_get,
+    order_update_status,
+    order_set_payment_intent,
+    order_update_payment_status,
+    order_record_ledger_entries,
+)
 from models.operations.users import user_get_buyer_profile
 from utils import env, log
 
@@ -404,7 +411,22 @@ async def internal_execute_payment(
     if body.stripe_payment_intent_id:
         await order_set_payment_intent(order_id, body.stripe_payment_intent_id)
 
-    updated = await order_update_status(order_id, "confirmed")
+    await order_update_payment_status(order_id, "succeeded")
+    updated = await order_update_status(order_id, "completed")
+    await order_record_ledger_entries(order_id)
+
+    # Move reserved → sold on each listing
+    for li in order.data.line_items:
+        listing = await listing_get(li.listing_id)
+        if listing:
+            listing.data.quantity_reserved -= li.quantity
+            listing.data.quantity_sold += li.quantity
+            if listing.data.quantity_sold >= listing.data.quantity_tonnes:
+                listing.data.status = "sold_out"
+            await listing_update(listing)
+
+    logger.info(f"Order {order_id} completed via internal pay")
+
     return PaymentResponse(
         order_id=order_id,
         status=updated.data.status,

@@ -7,7 +7,6 @@
  */
 
 import { isbot } from "isbot";
-// @ts-expect-error - standard import not available in all TS configs
 import { renderToReadableStream } from "react-dom/server.edge";
 import type { AppLoadContext, EntryContext } from "react-router";
 import { ServerRouter } from "react-router";

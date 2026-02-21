@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { listingsGet, listingUpdate, listingDelete, type Listing } from '@clients/api/listings';
+import { listingsGetMine, listingUpdate, listingDelete, type Listing } from '@clients/api/listings';
 import { Leaf } from 'lucide-react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
@@ -19,21 +19,21 @@ export default function SellerListingsPage() {
     const listingsRef = useRef<HTMLDivElement>(null);
 
     const { data, isLoading } = useQuery({
-        queryKey: ['listings'],
-        queryFn: listingsGet,
+        queryKey: ['listings', 'mine'],
+        queryFn: listingsGetMine,
     });
 
     const updateMutation = useMutation({
         mutationFn: ({ id, updates }: { id: string; updates: Partial<Listing> }) => listingUpdate(id, updates),
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['listings'] });
+            queryClient.invalidateQueries({ queryKey: ['listings', 'mine'] });
             setEditingListing(null);
         },
     });
 
     const archiveMutation = useMutation({
         mutationFn: (id: string) => listingDelete(id),
-        onSuccess: () => queryClient.invalidateQueries({ queryKey: ['listings'] }),
+        onSuccess: () => queryClient.invalidateQueries({ queryKey: ['listings', 'mine'] }),
     });
 
     const handleStatusChange = (id: string, status: string) => {
