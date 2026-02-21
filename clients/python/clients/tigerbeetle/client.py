@@ -1,4 +1,5 @@
 import os
+import socket
 from tigerbeetle import (
     ClientSync,
     Account,
@@ -11,7 +12,21 @@ from tigerbeetle import (
 
 # Configuration
 TIGERBEETLE_CLUSTER_ID = int(os.environ.get("TIGERBEETLE_CLUSTER_ID", "0"))
-TIGERBEETLE_ADDRESS = os.environ.get("TIGERBEETLE_ADDRESS", "127.0.0.1:3000")
+_raw_address = os.environ.get("TIGERBEETLE_ADDRESS", "127.0.0.1:3000")
+
+
+def _resolve_address(addr: str) -> str:
+    """Resolve hostname to IP since TigerBeetle's C client only accepts IP addresses."""
+    host, _, port = addr.rpartition(":")
+    try:
+        socket.inet_aton(host)
+        return addr  # already an IP
+    except OSError:
+        ip = socket.gethostbyname(host)
+        return f"{ip}:{port}"
+
+
+TIGERBEETLE_ADDRESS = _resolve_address(_raw_address)
 
 # Ledger constants
 EUR_LEDGER = 1

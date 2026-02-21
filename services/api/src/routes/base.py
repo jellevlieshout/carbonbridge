@@ -65,7 +65,7 @@ async def route_ledger_status():
         if not data:
             continue
         u = User(id=row["id"], data=data)
-        settled_balance = lookup_account_balance(u.data.tigerbeetle_settled_account_id)
+        settled_balance = lookup_account_balance(int(u.data.tigerbeetle_settled_account_id))
         user_accounts.append({
             "user_id": u.id,
             "email": u.data.email,
