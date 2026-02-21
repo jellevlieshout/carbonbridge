@@ -15,10 +15,6 @@ class HttpServerConf(BaseModel):
     port: int
     autoreload: bool
 
-class FakeRegistryConf(BaseModel):
-    failure_rate: float
-    min_latency_ms: int
-    max_latency_ms: int
 
 #### Env Vars ####
 
@@ -52,29 +48,6 @@ HTTP_EXPOSE_ERRORS = EnvVarSpec(
     type=(bool, ...),
 )
 
-## Fake Registry ##
-
-FAKE_REGISTRY_FAILURE_RATE = EnvVarSpec(
-    id="FAKE_REGISTRY_FAILURE_RATE",
-    default="0.1",
-    parse=float,
-    type=(float, ...),
-)
-
-FAKE_REGISTRY_MIN_LATENCY_MS = EnvVarSpec(
-    id="FAKE_REGISTRY_MIN_LATENCY_MS",
-    default="800",
-    parse=int,
-    type=(int, ...),
-)
-
-FAKE_REGISTRY_MAX_LATENCY_MS = EnvVarSpec(
-    id="FAKE_REGISTRY_MAX_LATENCY_MS",
-    default="2000",
-    parse=int,
-    type=(int, ...),
-)
-
 ## PostgreSQL ##
 ## NOTE: PostgreSQL configuration is added dynamically by the add-postgres-client script.
 ## When added, it creates src/conf/postgres.py with env var definitions.
@@ -90,10 +63,7 @@ VALIDATED_ENV_VARS = [
     HTTP_AUTORELOAD,
     HTTP_EXPOSE_ERRORS,
     HTTP_PORT,
-    LOG_LEVEL,
-    FAKE_REGISTRY_FAILURE_RATE,
-    FAKE_REGISTRY_MIN_LATENCY_MS,
-    FAKE_REGISTRY_MAX_LATENCY_MS,
+    LOG_LEVEL
 ]
 
 # Only validate auth vars if USE_AUTH is True
@@ -128,19 +98,4 @@ def get_http_conf() -> HttpServerConf:
         host=env.parse(HTTP_HOST),
         port=env.parse(HTTP_PORT),
         autoreload=env.parse(HTTP_AUTORELOAD),
-    )
-
-def get_fake_registry_conf() -> FakeRegistryConf:
-    failure_rate = env.parse(FAKE_REGISTRY_FAILURE_RATE)
-    min_latency_ms = env.parse(FAKE_REGISTRY_MIN_LATENCY_MS)
-    max_latency_ms = env.parse(FAKE_REGISTRY_MAX_LATENCY_MS)
-
-    failure_rate = max(0.0, min(1.0, failure_rate))
-    min_latency_ms = max(0, min_latency_ms)
-    max_latency_ms = max(min_latency_ms, max_latency_ms)
-
-    return FakeRegistryConf(
-        failure_rate=failure_rate,
-        min_latency_ms=min_latency_ms,
-        max_latency_ms=max_latency_ms,
     )
