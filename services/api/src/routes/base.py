@@ -7,3 +7,11 @@ logger = log.get_logger(__name__)
 
 router = APIRouter(prefix="/api")
 router.include_router(users_router)
+
+
+@router.post("/seed", tags=["dev"])
+async def route_seed():
+    """Populate the database with fake seed data (dev only)."""
+    from seed import run_seed
+    counts = await run_seed()
+    return {"status": "ok", "seeded": counts}
