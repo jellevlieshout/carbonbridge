@@ -30,6 +30,13 @@ export async function logout(): Promise<any> {
 }
 
 /*
+ * Attempt to refresh the access token via the OAuth agent
+ */
+export async function refreshToken(): Promise<void> {
+    await getOAuthAgentClient().refresh();
+}
+
+/*
  * Call the OAuth user info endpoint with a secure cookie as a credential
  */
 export async function getUserInfo(): Promise<any> {

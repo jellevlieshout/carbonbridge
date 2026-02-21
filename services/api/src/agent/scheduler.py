@@ -41,6 +41,18 @@ async def nightly_buyer_job():
     logger.info("Nightly autonomous buyer agent job completed")
 
 
+async def offsets_db_sync_job():
+    """Weekly sync of OffsetsDB data from CarbonPlan."""
+    logger.info("Weekly OffsetsDB sync job starting...")
+    try:
+        from offsets_db_sync import run_offsets_db_sync
+
+        result = await run_offsets_db_sync()
+        logger.info(f"OffsetsDB sync job finished: {result.get('status')}")
+    except Exception as e:
+        logger.error(f"OffsetsDB sync job failed: {e}", exc_info=True)
+
+
 def init_scheduler() -> AsyncIOScheduler:
     """Start the APScheduler with the nightly buyer agent job."""
     global _scheduler
@@ -52,8 +64,15 @@ def init_scheduler() -> AsyncIOScheduler:
         name="Nightly Autonomous Buyer Agent",
         replace_existing=True,
     )
+    _scheduler.add_job(
+        offsets_db_sync_job,
+        trigger=CronTrigger(day_of_week="sun", hour=3, minute=0, timezone=ZoneInfo("UTC")),
+        id="weekly_offsets_db_sync",
+        name="Weekly OffsetsDB Sync",
+        replace_existing=True,
+    )
     _scheduler.start()
-    logger.info("APScheduler started with nightly buyer agent job at 02:00 UTC")
+    logger.info("APScheduler started with nightly buyer agent (02:00 UTC) and weekly OffsetsDB sync (Sun 03:00 UTC)")
     return _scheduler
 
 

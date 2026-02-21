@@ -25,6 +25,7 @@ from models.entities.couchbase.registry_verifications import (
     RegistryVerificationData,
 )
 from models.entities.couchbase.market_insights import MarketInsights, MarketInsightsData
+from models.entities.couchbase.offsets_db_projects import OffsetsDBProject, OffsetsDBProjectData
 
 from utils import log
 
@@ -501,6 +502,182 @@ def _build_listings() -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
+# OffsetsDB seed projects (~12 curated entries across all 5 registries & 7 categories)
+# ---------------------------------------------------------------------------
+
+OFFSETS_DB_SEED_PROJECTS: list[dict] = [
+    # ACR - Forest
+    {
+        "key": "ACR-100",
+        "offsets_db_project_id": "ACR-100",
+        "registry": "ACR",
+        "name": "Mississippi Alluvial Valley Reforestation",
+        "category": "Forest",
+        "project_type": "Reforestation",
+        "country": "United States",
+        "protocol": "ACR Reforestation Methodology",
+        "total_credits_issued": 245000.0,
+        "total_credits_retired": 180000.0,
+        "status": "Active",
+    },
+    # ART - Forest
+    {
+        "key": "ART-001",
+        "offsets_db_project_id": "ART-001",
+        "registry": "ART",
+        "name": "Guyana REDD+ National Programme",
+        "category": "Forest",
+        "project_type": "REDD+",
+        "country": "Guyana",
+        "protocol": "ART TREES Standard",
+        "total_credits_issued": 33470000.0,
+        "total_credits_retired": 12500000.0,
+        "status": "Active",
+    },
+    # CAR - Forest
+    {
+        "key": "CAR-1100",
+        "offsets_db_project_id": "CAR-1100",
+        "registry": "CAR",
+        "name": "Garcia River Forest",
+        "category": "Forest",
+        "project_type": "Improved Forest Management",
+        "country": "United States",
+        "protocol": "CAR Forest Protocol",
+        "total_credits_issued": 1520000.0,
+        "total_credits_retired": 890000.0,
+        "status": "Active",
+    },
+    # GLD - Renewable Energy
+    {
+        "key": "GS-1234",
+        "offsets_db_project_id": "GS-1234",
+        "registry": "GLD",
+        "name": "Bhadla Solar Park Phase II",
+        "category": "Renewable Energy",
+        "project_type": "Solar PV",
+        "country": "India",
+        "protocol": "GS Renewable Energy Methodology",
+        "total_credits_issued": 890000.0,
+        "total_credits_retired": 450000.0,
+        "status": "Active",
+    },
+    # VCS - Forest
+    {
+        "key": "VCS-875",
+        "offsets_db_project_id": "VCS-875",
+        "registry": "VCS",
+        "name": "Rimba Raya Biodiversity Reserve REDD+",
+        "category": "Forest",
+        "project_type": "REDD+",
+        "country": "Indonesia",
+        "protocol": "VM0004",
+        "total_credits_issued": 8500000.0,
+        "total_credits_retired": 3200000.0,
+        "status": "Active",
+    },
+    # VCS - Renewable Energy
+    {
+        "key": "VCS-2341",
+        "offsets_db_project_id": "VCS-2341",
+        "registry": "VCS",
+        "name": "Rajasthan Wind Power Project",
+        "category": "Renewable Energy",
+        "project_type": "Wind",
+        "country": "India",
+        "protocol": "ACM0002",
+        "total_credits_issued": 1200000.0,
+        "total_credits_retired": 780000.0,
+        "status": "Active",
+    },
+    # GLD - Energy Efficiency
+    {
+        "key": "GS-5678",
+        "offsets_db_project_id": "GS-5678",
+        "registry": "GLD",
+        "name": "Ghana Improved Cookstoves Programme",
+        "category": "Energy Efficiency",
+        "project_type": "Cookstoves",
+        "country": "Ghana",
+        "protocol": "GS TPDDTEC",
+        "total_credits_issued": 650000.0,
+        "total_credits_retired": 320000.0,
+        "status": "Active",
+    },
+    # VCS - GHG Management
+    {
+        "key": "VCS-1440",
+        "offsets_db_project_id": "VCS-1440",
+        "registry": "VCS",
+        "name": "Bandeirantes Landfill Gas Project",
+        "category": "GHG Management",
+        "project_type": "Landfill Gas",
+        "country": "Brazil",
+        "protocol": "ACM0001",
+        "total_credits_issued": 12400000.0,
+        "total_credits_retired": 9100000.0,
+        "status": "Active",
+    },
+    # ACR - Agriculture
+    {
+        "key": "ACR-450",
+        "offsets_db_project_id": "ACR-450",
+        "registry": "ACR",
+        "name": "Iowa Sustainable Agriculture Soil Carbon",
+        "category": "Agriculture",
+        "project_type": "Soil Carbon",
+        "country": "United States",
+        "protocol": "ACR Soil Carbon Methodology",
+        "total_credits_issued": 78000.0,
+        "total_credits_retired": 45000.0,
+        "status": "Active",
+    },
+    # GLD - Fuel Switching
+    {
+        "key": "GS-9012",
+        "offsets_db_project_id": "GS-9012",
+        "registry": "GLD",
+        "name": "Rwanda Biogas Programme for Rural Households",
+        "category": "Fuel Switching",
+        "project_type": "Biogas",
+        "country": "Rwanda",
+        "protocol": "GS Thermal Energy Methodology",
+        "total_credits_issued": 210000.0,
+        "total_credits_retired": 95000.0,
+        "status": "Active",
+    },
+    # CAR - Other
+    {
+        "key": "CAR-500",
+        "offsets_db_project_id": "CAR-500",
+        "registry": "CAR",
+        "name": "ODS Destruction Project - California",
+        "category": "Other",
+        "project_type": "ODS Destruction",
+        "country": "United States",
+        "protocol": "CAR ODS Protocol",
+        "total_credits_issued": 4300000.0,
+        "total_credits_retired": 3100000.0,
+        "status": "Active",
+    },
+    # VCS - Renewable Energy (developing country)
+    {
+        "key": "VCS-3001",
+        "offsets_db_project_id": "VCS-3001",
+        "registry": "VCS",
+        "name": "Nyangani Small Hydro Project",
+        "category": "Renewable Energy",
+        "project_type": "Hydro",
+        "country": "Zimbabwe",
+        "protocol": "AMS-I.D",
+        "total_credits_issued": 340000.0,
+        "total_credits_retired": 120000.0,
+        "status": "Active",
+    },
+]
+
+
+# ---------------------------------------------------------------------------
 # Seed runner
 # ---------------------------------------------------------------------------
 
@@ -512,6 +689,7 @@ async def run_seed() -> dict:
         "orders": 0,
         "registry_verifications": 0,
         "market_insights": 0,
+        "offsets_db_projects": 0,
     }
 
     # ---- Users ----
@@ -713,6 +891,28 @@ async def run_seed() -> dict:
     counts["market_insights"] = 1
     logger.info("Seeded market insights")
 
+    # ---- OffsetsDB Projects ----
+    now = datetime.now(timezone.utc)
+    for proj in OFFSETS_DB_SEED_PROJECTS:
+        key = proj["key"]
+        data = OffsetsDBProjectData(
+            offsets_db_project_id=proj["offsets_db_project_id"],
+            registry=proj["registry"],
+            name=proj.get("name"),
+            category=proj.get("category"),
+            project_type=proj.get("project_type"),
+            country=proj.get("country"),
+            protocol=proj.get("protocol"),
+            total_credits_issued=proj.get("total_credits_issued", 0.0),
+            total_credits_retired=proj.get("total_credits_retired", 0.0),
+            status=proj.get("status"),
+            offsets_db_url=f"https://offsets-db.carbonplan.org/project/{proj['offsets_db_project_id']}",
+            synced_at=now,
+        )
+        await OffsetsDBProject.create_or_update(key, data)
+        counts["offsets_db_projects"] += 1
+    logger.info(f"Seeded {counts['offsets_db_projects']} OffsetsDB projects")
+
     logger.info(f"Seeding complete: {counts}")
     return counts
 
@@ -722,10 +922,20 @@ async def run_seed() -> dict:
 # ---------------------------------------------------------------------------
 
 async def _main():
+    import sys
+
     from clients.couchbase import check_connection
     await check_connection()
-    result = await run_seed()
-    print(f"Seed complete: {result}")
+
+    if "--live-sync" in sys.argv:
+        from offsets_db_sync import run_offsets_db_sync
+
+        print("Running live OffsetsDB sync (downloading from CarbonPlan)...")
+        result = await run_offsets_db_sync()
+        print(f"Live sync complete: {result}")
+    else:
+        result = await run_seed()
+        print(f"Seed complete: {result}")
 
 
 if __name__ == "__main__":
