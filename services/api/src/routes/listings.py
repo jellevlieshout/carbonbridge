@@ -10,6 +10,7 @@ from models.operations.listings import (
     listing_search,
     listing_soft_delete,
     listing_update,
+    listing_get_by_seller,
 )
 from models.operations.registry_verifications import verification_create
 from utils import log
@@ -128,6 +129,19 @@ async def route_listing_search(
         limit=limit,
         offset=offset,
     )
+    return ListingSearchResponse(
+        listings=[_listing_to_response(l) for l in results],
+        count=len(results),
+    )
+
+
+@router.get("/me", response_model=ListingSearchResponse)
+async def route_listing_get_me(
+    user: dict = Depends(require_authenticated),
+):
+    """Get all listings for the authenticated seller."""
+    seller_id = user["sub"]
+    results = await listing_get_by_seller(seller_id)
     return ListingSearchResponse(
         listings=[_listing_to_response(l) for l in results],
         count=len(results),

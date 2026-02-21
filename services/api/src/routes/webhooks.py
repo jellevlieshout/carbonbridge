@@ -5,6 +5,7 @@ from models.operations.orders import (
     order_get_by_payment_intent,
     order_update_status,
     order_update_payment_status,
+    order_record_ledger_entries,
 )
 from models.operations.listings import listing_get, listing_update
 from utils import env, log
@@ -59,6 +60,7 @@ async def route_stripe_webhook(request: Request):
         # Update order status
         await order_update_payment_status(order.id, "succeeded")
         await order_update_status(order.id, "completed")
+        await order_record_ledger_entries(order.id)
 
         # Move reserved → sold on each listing
         for li in order.data.line_items:

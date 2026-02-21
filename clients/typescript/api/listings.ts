@@ -28,7 +28,11 @@ export interface ListingSearchResponse {
 }
 
 export async function listingsGet(): Promise<ListingSearchResponse> {
-    return await get('/listings');
+    return await get('/listings/');
+}
+
+export async function listingsGetMine(): Promise<ListingSearchResponse> {
+    return await get('/listings/me');
 }
 
 export async function listingGetById(id: string): Promise<Listing> {
