@@ -120,8 +120,8 @@ async def ensure_tigerbeetle_accounts(user_id: str) -> Tuple[int, int]:
         and user.data.tigerbeetle_settled_account_id
     ):
         return (
-            user.data.tigerbeetle_pending_account_id,
-            user.data.tigerbeetle_settled_account_id,
+            int(user.data.tigerbeetle_pending_account_id),
+            int(user.data.tigerbeetle_settled_account_id),
         )
 
     from clients.tigerbeetle import create_user_accounts
@@ -129,8 +129,8 @@ async def ensure_tigerbeetle_accounts(user_id: str) -> Tuple[int, int]:
     loop = asyncio.get_event_loop()
     pending_id, settled_id = await loop.run_in_executor(None, create_user_accounts)
 
-    user.data.tigerbeetle_pending_account_id = pending_id
-    user.data.tigerbeetle_settled_account_id = settled_id
+    user.data.tigerbeetle_pending_account_id = str(pending_id)
+    user.data.tigerbeetle_settled_account_id = str(settled_id)
     await User.update(user)
 
     return (pending_id, settled_id)

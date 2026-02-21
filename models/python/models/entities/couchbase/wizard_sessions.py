@@ -6,7 +6,8 @@ from clients.couchbase import BaseModelCouchbase, BaseCouchbaseEntityData
 WizardStep = Literal[
     "profile_check", "onboarding", "footprint_estimate",
     "preference_elicitation", "listing_search",
-    "recommendation", "order_creation"
+    "recommendation", "order_creation",
+    "autobuy_waitlist", "complete",
 ]
 
 
@@ -41,6 +42,13 @@ class WizardSessionData(BaseCouchbaseEntityData):
     # ── autonomous-buy handoff ────────────────────────────────────────
     autobuy_opt_in: bool = False
     autobuy_criteria_snapshot: Optional[Dict[str, Any]] = None
+    # ── terminal outcome signals ──────────────────────────────────────
+    handoff_to_buyer_agent: bool = False
+    buyer_agent_run_id: Optional[str] = None
+    buyer_agent_outcome: Optional[str] = None
+    waitlist_opted_in: bool = False
+    waitlist_declined: bool = False
+    conversation_complete: bool = False
 
 
 class WizardSession(BaseModelCouchbase[WizardSessionData]):

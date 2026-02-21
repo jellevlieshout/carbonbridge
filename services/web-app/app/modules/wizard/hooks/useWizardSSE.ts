@@ -7,6 +7,8 @@ interface UseWizardSSEOptions {
   onStepChange: (step: WizardStep) => void;
   onDone: (fullResponse: string) => void;
   onError: (message: string) => void;
+  onBuyerHandoff?: (outcome: string, message: string) => void;
+  onAutobuyWaitlist?: (optedIn: boolean) => void;
 }
 
 async function fetchSSE(url: string, signal: AbortSignal): Promise<Response> {
@@ -52,7 +54,14 @@ async function fetchSSE(url: string, signal: AbortSignal): Promise<Response> {
   return response;
 }
 
-export const useWizardSSE = ({ onToken, onStepChange, onDone, onError }: UseWizardSSEOptions) => {
+export const useWizardSSE = ({
+  onToken,
+  onStepChange,
+  onDone,
+  onError,
+  onBuyerHandoff,
+  onAutobuyWaitlist,
+}: UseWizardSSEOptions) => {
   const [isStreaming, setIsStreaming] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -108,6 +117,12 @@ export const useWizardSSE = ({ onToken, onStepChange, onDone, onError }: UseWiza
                 case "error":
                   onError(event.message);
                   break;
+                case "buyer_handoff":
+                  onBuyerHandoff?.(event.outcome, event.message);
+                  break;
+                case "autobuy_waitlist":
+                  onAutobuyWaitlist?.(event.opted_in);
+                  break;
               }
             } catch {
               // skip malformed JSON
@@ -122,7 +137,7 @@ export const useWizardSSE = ({ onToken, onStepChange, onDone, onError }: UseWiza
         abortRef.current = null;
       }
     },
-    [onToken, onStepChange, onDone, onError, stopStream],
+    [onToken, onStepChange, onDone, onError, onBuyerHandoff, onAutobuyWaitlist, stopStream],
   );
 
   useEffect(() => {

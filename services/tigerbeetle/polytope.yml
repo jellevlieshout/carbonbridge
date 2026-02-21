@@ -6,6 +6,7 @@ tools:
         args:
           image: ghcr.io/tigerbeetle/tigerbeetle:latest
           id: tigerbeetle
+          unconfined: true
           restart:
             policy: on-failure
           services:
@@ -27,6 +28,7 @@ tools:
         args:
           image: ghcr.io/tigerbeetle/tigerbeetle:latest
           id: tigerbeetle-format
+          unconfined: true
           restart:
             policy: never
           mounts:
