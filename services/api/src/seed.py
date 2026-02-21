@@ -715,8 +715,8 @@ async def run_seed() -> dict:
             user = await User.get(key)
             if user and not user.data.tigerbeetle_pending_account_id:
                 pending_id, settled_id = create_user_accounts()
-                user.data.tigerbeetle_pending_account_id = pending_id
-                user.data.tigerbeetle_settled_account_id = settled_id
+                user.data.tigerbeetle_pending_account_id = str(pending_id)
+                user.data.tigerbeetle_settled_account_id = str(settled_id)
                 await User.update(user)
                 logger.info(f"TigerBeetle: created accounts for {key}")
     except Exception as e:
