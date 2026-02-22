@@ -120,3 +120,27 @@ async def route_wizard_stream(
             "X-Accel-Buffering": "no",
         },
     )
+
+
+# ---------------------------------------------------------------------------
+# POST /wizard/session/{id}/nudge — mark session for proactive follow-up
+# The frontend calls this after silence timeout, then calls GET /stream.
+# The stream runner detects no pending user message and goes proactive.
+# ---------------------------------------------------------------------------
+
+@router.post("/session/{session_id}/nudge")
+async def route_wizard_nudge(
+    session_id: str,
+    user: dict = Depends(require_authenticated),
+):
+    """
+    Signal the agent to continue proactively after buyer silence.
+    Returns JSON; the frontend then calls GET /stream which detects no
+    pending user message and fires a proactive continuation turn.
+    """
+    session = await wizard_session_get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if session.data.buyer_id != user["sub"]:
+        raise HTTPException(status_code=403, detail="Not your session")
+    return {"status": "ok"}

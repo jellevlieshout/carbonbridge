@@ -14,6 +14,7 @@ Terminal outcome signals:
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 from typing_extensions import TypedDict
 
@@ -75,8 +76,17 @@ class WizardState(TypedDict, total=False):
     # ── error signal ──────────────────────────────────────────────────
     error: Optional[str]
 
+    # ── proactive / time awareness ────────────────────────────────────
+    is_nudge: bool                          # True when agent continues proactively
+    session_created_at: Optional[datetime]  # When this session started
+    session_last_active_at: Optional[datetime]  # Last activity timestamp
 
-def state_from_session(session: WizardSession, latest_message: str) -> WizardState:
+
+def state_from_session(
+    session: WizardSession,
+    latest_message: str,
+    is_nudge: bool = False,
+) -> WizardState:
     """Hydrate a WizardState from a persisted WizardSession document."""
     d = session.data
     return WizardState(
@@ -108,4 +118,7 @@ def state_from_session(session: WizardSession, latest_message: str) -> WizardSta
         response_text="",
         next_step=None,
         error=None,
+        is_nudge=is_nudge,
+        session_created_at=getattr(d, "created_at", None),
+        session_last_active_at=getattr(d, "last_active_at", None),
     )

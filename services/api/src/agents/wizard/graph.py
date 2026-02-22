@@ -16,6 +16,7 @@ Conversation quality rules enforced here:
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any, Dict
 
 from langgraph.graph import END, START, StateGraph
@@ -129,6 +130,34 @@ def _build_context_block(state: WizardState) -> str:
             f"Draft order exists: {draft_id} (€{state.get('draft_order_total_eur')})"
         )
 
+    # Time awareness
+    try:
+        now = datetime.now(timezone.utc)
+        created_at = state.get("session_created_at")
+        last_active = state.get("session_last_active_at")
+        if created_at:
+            # Ensure timezone-aware comparison
+            if created_at.tzinfo is None:
+                created_at = created_at.replace(tzinfo=timezone.utc)
+            elapsed_total = int((now - created_at).total_seconds() / 60)
+            parts.append(f"Session started {elapsed_total} minutes ago")
+        if last_active:
+            if last_active.tzinfo is None:
+                last_active = last_active.replace(tzinfo=timezone.utc)
+            idle_seconds = int((now - last_active).total_seconds())
+            if idle_seconds > 30:
+                idle_str = f"{idle_seconds // 60}m {idle_seconds % 60}s" if idle_seconds >= 60 else f"{idle_seconds}s"
+                parts.append(f"Buyer last active {idle_str} ago")
+    except Exception:
+        pass  # time context is best-effort
+
+    if state.get("is_nudge"):
+        parts.append(
+            "[PROACTIVE TURN — buyer has not replied yet. "
+            "Continue the conversation naturally without waiting. "
+            "You may offer encouragement, a helpful hint, or a gentle next question.]"
+        )
+
     return "\n".join(parts)
 
 
@@ -136,10 +165,20 @@ def _prompt_for_step(state: WizardState, extra_instructions: str = "") -> str:
     context = _build_context_block(state)
     history = _history_text(state)
     extra = f"\n\n[Step instructions: {extra_instructions}]" if extra_instructions else ""
+
+    latest = state.get("latest_user_message", "")
+    if latest == "__nudge__":
+        buyer_line = (
+            "[No reply from buyer yet — send a friendly, helpful follow-up message "
+            "to continue the conversation. Keep it natural and brief.]"
+        )
+    else:
+        buyer_line = f"Buyer just said: {latest}"
+
     return (
         f"{context}{extra}\n\n"
         f"Conversation so far:\n{history}\n\n"
-        f"Buyer just said: {state.get('latest_user_message', '')}"
+        f"{buyer_line}"
     )
 
 
@@ -276,25 +315,44 @@ async def node_profile_check(state: WizardState) -> Dict[str, Any]:
         or (enriched.get("buyer_profile") or {}).get("company_size_employees")
     )
 
+    is_first_message = not (enriched.get("conversation_history") or []) or \
+        all(m.role == "assistant" for m in (enriched.get("conversation_history") or []))
+
     if sector and employees:
-        # Profile already complete — auto-advance without calling LLM for a confirmation
-        instructions = (
-            "The buyer's sector and employee count are ALREADY KNOWN (shown above in context). "
-            "Set profile_complete=True and advance_to_footprint=True. "
-            "Write a brief welcoming message acknowledging their company/sector "
-            "and say you'll estimate their carbon footprint. "
-            "Do NOT ask for sector or employees again."
-        )
+        if is_first_message:
+            instructions = (
+                "This is the very first message — start the conversation! "
+                "Greet the buyer warmly. Tell them their company sector and size are already on file. "
+                "Set profile_complete=True and advance_to_footprint=True. "
+                "Immediately say you'll now estimate their carbon footprint. "
+                "Be enthusiastic and concise — 2–3 sentences max."
+            )
+        else:
+            instructions = (
+                "The buyer's sector and employee count are ALREADY KNOWN (shown above in context). "
+                "Set profile_complete=True and advance_to_footprint=True. "
+                "Write a brief welcoming message acknowledging their company/sector "
+                "and say you'll estimate their carbon footprint. "
+                "Do NOT ask for sector or employees again."
+            )
     else:
         missing = []
         if not sector:
             missing.append("sector")
         if not employees:
             missing.append("number of employees")
-        instructions = (
-            f"Ask the buyer for their {' and '.join(missing)}. "
-            "One friendly question. Keep it short."
-        )
+        if is_first_message:
+            instructions = (
+                "This is the very first message in the conversation — greet the buyer warmly! "
+                "Introduce yourself as their CarbonBridge guide. "
+                f"Then ask for their {' and '.join(missing)} in a friendly, natural way. "
+                "Make it feel like a real conversation, not a form. Keep it short."
+            )
+        else:
+            instructions = (
+                f"Ask the buyer for their {' and '.join(missing)}. "
+                "One friendly question. Keep it short."
+            )
 
     agent = create_wizard_agent("profile_check")
     result = await agent.run(_prompt_for_step(enriched, instructions), deps=_build_deps(state))

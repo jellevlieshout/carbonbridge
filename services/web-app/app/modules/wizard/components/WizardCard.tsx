@@ -24,7 +24,7 @@ export function WizardCard({ stepLabel, stepNumber, totalSteps, children }: Wiza
   }, [stepNumber]);
 
   return (
-    <div className="flex flex-col rounded-[1.25rem] bg-white border border-mist shadow-sm overflow-hidden min-h-[calc(100vh-12rem)]">
+    <div className="flex flex-col rounded-[1.25rem] bg-white border border-mist shadow-sm overflow-hidden h-[calc(100vh-10rem)]">
       {/* Header */}
       <div className="flex items-center justify-between px-6 py-4 border-b border-mist">
         <h2 className="font-sans font-semibold text-slate tracking-tight">{stepLabel}</h2>

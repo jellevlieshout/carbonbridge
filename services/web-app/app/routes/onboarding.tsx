@@ -149,22 +149,26 @@ export default function OnboardingPage() {
                 <div className="absolute bottom-0 left-0 w-[400px] h-[400px] bg-[radial-gradient(circle,rgba(198,93,53,0.04)_0%,transparent_70%)]" />
             </div>
 
-            <div className="relative z-10 w-full max-w-xl">
+            <div className={`relative z-10 w-full transition-all duration-500 ${isWizardStep ? 'max-w-3xl' : 'max-w-xl'}`}>
                 {/* Logo */}
-                <div className="flex justify-center mb-10">
-                    <Logo size="md" />
-                </div>
+                {!isWizardStep && (
+                    <div className="flex justify-center mb-10">
+                        <Logo size="lg" />
+                    </div>
+                )}
 
                 {/* Progress indicator */}
-                <div className="flex items-center justify-center gap-2 mb-8">
-                    {[0, 1, ...(showBuyerProfile ? [2, 3] : [])].map((s) => (
-                        <div
-                            key={s}
-                            className={`h-1.5 rounded-full transition-all duration-500 ${s === step ? 'w-8 bg-canopy' : s < step ? 'w-8 bg-canopy/40' : 'w-8 bg-slate/15'
-                                }`}
-                        />
-                    ))}
-                </div>
+                {!isWizardStep && (
+                    <div className="flex items-center justify-center gap-2 mb-8">
+                        {[0, 1, ...(showBuyerProfile ? [2, 3] : [])].map((s) => (
+                            <div
+                                key={s}
+                                className={`h-1.5 rounded-full transition-all duration-500 ${s === step ? 'w-8 bg-canopy' : s < step ? 'w-8 bg-canopy/40' : 'w-8 bg-slate/15'
+                                    }`}
+                            />
+                        ))}
+                    </div>
+                )}
 
                 {/* Card — hidden on wizard step which has its own UI */}
                 {!isWizardStep && <div className="bg-white rounded-2xl border border-mist shadow-sm overflow-hidden">
@@ -272,6 +276,7 @@ export default function OnboardingPage() {
                                     <select
                                         value={sector}
                                         onChange={(e) => setSector(e.target.value)}
+                                        aria-label="Sector"
                                         className="w-full h-11 px-4 rounded-lg border border-mist bg-linen/50 text-slate font-sans text-sm focus:outline-none focus:border-canopy focus:ring-1 focus:ring-canopy/20 transition-colors"
                                     >
                                         <option value="">Select sector...</option>
@@ -290,6 +295,7 @@ export default function OnboardingPage() {
                                         <select
                                             value={country}
                                             onChange={(e) => setCountry(e.target.value)}
+                                            aria-label="Country"
                                             className="w-full h-11 px-4 rounded-lg border border-mist bg-linen/50 text-slate font-sans text-sm focus:outline-none focus:border-canopy focus:ring-1 focus:ring-canopy/20 transition-colors"
                                         >
                                             <option value="">Select country...</option>

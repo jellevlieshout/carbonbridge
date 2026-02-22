@@ -15,9 +15,8 @@ import hashlib
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import List, Literal, Optional, Tuple
+from typing import List, Literal, Optional
 
-import stripe as stripe_lib
 from pydantic import BaseModel
 from pydantic_ai import Agent, RunContext
 
@@ -176,31 +175,31 @@ def _build_agent() -> Agent[BuyerAgentDeps, AgentDecision]:
 
         # Filter: available quantity >= 1t
         listings = [
-            l for l in listings
-            if (l.data.quantity_tonnes - l.data.quantity_reserved - l.data.quantity_sold) >= 1.0
+            lst for lst in listings
+            if (lst.data.quantity_tonnes - lst.data.quantity_reserved - lst.data.quantity_sold) >= 1.0
         ]
         # Vintage minimum (listing_search uses exact match, so filter client-side)
         if min_vintage_year:
-            listings = [l for l in listings if (l.data.vintage_year or 0) >= min_vintage_year]
+            listings = [lst for lst in listings if (lst.data.vintage_year or 0) >= min_vintage_year]
 
         ctx.deps.listings_found = listings
         return {
             "count": len(listings),
             "listings": [
                 {
-                    "id": l.id,
-                    "project_name": l.data.project_name,
-                    "project_type": l.data.project_type,
-                    "project_country": l.data.project_country,
-                    "vintage_year": l.data.vintage_year,
-                    "price_per_tonne_eur": l.data.price_per_tonne_eur,
+                    "id": lst.id,
+                    "project_name": lst.data.project_name,
+                    "project_type": lst.data.project_type,
+                    "project_country": lst.data.project_country,
+                    "vintage_year": lst.data.vintage_year,
+                    "price_per_tonne_eur": lst.data.price_per_tonne_eur,
                     "quantity_available": round(
-                        l.data.quantity_tonnes - l.data.quantity_reserved - l.data.quantity_sold, 2
+                        lst.data.quantity_tonnes - lst.data.quantity_reserved - lst.data.quantity_sold, 2
                     ),
-                    "co_benefits": l.data.co_benefits,
-                    "verification_status": l.data.verification_status,
+                    "co_benefits": lst.data.co_benefits,
+                    "verification_status": lst.data.verification_status,
                 }
-                for l in listings
+                for lst in listings
             ],
         }
 
@@ -356,7 +355,7 @@ async def run_buyer_agent(
         # --- Gemini-driven search, score, and selection ---
         deps = BuyerAgentDeps(
             buyer_id=buyer_id,
-            buyer_profile=profile,
+            buyer_profile=profile or BuyerProfile(),
             criteria=criteria,
             remaining_budget_eur=remaining,
             monthly_budget_eur=monthly_budget,
@@ -471,7 +470,7 @@ async def run_buyer_agent(
         order = await order_create(buyer_id, line_items, decision.total_cost_eur)
 
         # Payment via Stripe Agent Toolkit (Payment Link) or mock
-        if _stripe_configured():
+        if _stripe_configured() and StripeAPI is not None:
             key = env.parse(STRIPE_SECRET_KEY)
             stripe_agent = StripeAPI(secret_key=key)
             web_app_url = env.parse(WEB_APP_URL) or "http://localhost:8000"
@@ -512,7 +511,7 @@ async def run_buyer_agent(
             payment_link_url = payment_link.get("url") if isinstance(payment_link, dict) else str(payment_link)
             payment_link_id = payment_link.get("id", "") if isinstance(payment_link, dict) else ""
 
-            await order_set_payment_link(order.id, payment_link_url)
+            await order_set_payment_link(order.id, payment_link_url or "")
             await order_set_payment_intent(order.id, payment_link_id)
             payment_id = payment_link_id
             payment_mode = "stripe_agent_toolkit"
@@ -571,7 +570,9 @@ def _elapsed(start: float) -> int:
 
 
 async def _record_step(
-    run_id: str, step_index: int, step_type: str, label: str,
+    run_id: str, step_index: int,
+    step_type: Literal["tool_call", "reasoning", "decision", "output"],
+    label: str,
     input_data=None, output=None, listings_considered=None,
     score_breakdown=None, duration_ms=None,
 ):
