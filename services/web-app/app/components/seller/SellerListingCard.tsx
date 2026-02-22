@@ -3,8 +3,25 @@ import {
     Leaf, Wind, Flame, Factory, Zap, Tractor, Sun, HelpCircle,
     Pause, Play, Archive, Pencil, ShieldCheck, AlertTriangle,
     MapPin, Calendar, Rocket, Loader2, Hash, BadgeCheck, ExternalLink,
+    Gavel, Users, Timer,
 } from 'lucide-react';
 import type { Listing } from '@clients/api/listings';
+import type { Auction } from '@clients/api/auctions';
+
+// Compact countdown for auction strips
+function AuctionCountdown({ endsAt }: { endsAt: string }) {
+    const [remaining, setRemaining] = React.useState(0);
+    React.useEffect(() => {
+        const tick = () => setRemaining(Math.max(0, new Date(endsAt).getTime() - Date.now()));
+        tick();
+        const id = setInterval(tick, 1000);
+        return () => clearInterval(id);
+    }, [endsAt]);
+    const h = Math.floor(remaining / 3_600_000);
+    const m = Math.floor((remaining % 3_600_000) / 60_000);
+    const s = Math.floor((remaining % 60_000) / 1000);
+    return <span className="tabular-nums">{h > 0 && `${h}h `}{String(m).padStart(2, '0')}:{String(s).padStart(2, '0')}</span>;
+}
 
 // Project type → icon + color mapping
 const projectTypeConfig: Record<string, { icon: typeof Leaf; bg: string; color: string }> = {
@@ -33,6 +50,7 @@ const verificationConfig: Record<string, { label: string; icon: typeof ShieldChe
 
 interface SellerListingCardProps {
     listing: Listing;
+    auctions?: Auction[];
     onEdit: (listing: Listing) => void;
     onStatusChange: (id: string, status: string) => void;
     onArchive: (id: string) => void;
@@ -40,7 +58,7 @@ interface SellerListingCardProps {
     isVerifying?: boolean;
 }
 
-export function SellerListingCard({ listing, onEdit, onStatusChange, onArchive, onVerify, isVerifying }: SellerListingCardProps) {
+export function SellerListingCard({ listing, auctions = [], onEdit, onStatusChange, onArchive, onVerify, isVerifying }: SellerListingCardProps) {
     const available = listing.quantity_tonnes - listing.quantity_reserved - listing.quantity_sold;
     const soldPercent = listing.quantity_tonnes > 0
         ? Math.round((listing.quantity_sold / listing.quantity_tonnes) * 100)
@@ -132,6 +150,74 @@ export function SellerListingCard({ listing, onEdit, onStatusChange, onArchive, 
                         <div className="h-full rounded-full bg-gradient-to-r from-sage to-emerald-500 transition-all duration-700" style={{ width: `${soldPercent}%` }} />
                     </div>
                 </div>
+
+                {/* Active auctions for this listing */}
+                {auctions.length > 0 && (
+                    <div className="mb-4 space-y-2">
+                        {auctions.map((auction) => {
+                            const isLive = auction.status === 'active';
+                            const isScheduled = auction.status === 'scheduled';
+                            const isSettled = auction.status === 'settled' || auction.status === 'bought_now';
+                            const isFailed = auction.status === 'failed' || auction.status === 'cancelled';
+
+                            const statusStyle = isLive
+                                ? 'border-ember/30 bg-ember/5'
+                                : isScheduled
+                                ? 'border-sky-300/40 bg-sky-50/50'
+                                : isSettled
+                                ? 'border-emerald-300/40 bg-emerald-50/50'
+                                : isFailed
+                                ? 'border-red-300/30 bg-red-50/30'
+                                : 'border-mist bg-mist/20';
+
+                            const statusLabel = isLive ? 'Live' : isScheduled ? 'Scheduled'
+                                : auction.status === 'settled' ? 'Settled' : auction.status === 'bought_now' ? 'Sold'
+                                : auction.status === 'ended' ? 'Ended' : auction.status === 'failed' ? 'Failed'
+                                : auction.status === 'cancelled' ? 'Cancelled' : auction.status;
+
+                            const dotColor = isLive ? 'bg-ember' : isScheduled ? 'bg-sky-500'
+                                : isSettled ? 'bg-emerald-500' : 'bg-slate/30';
+
+                            const displayPrice = auction.current_high_bid_eur ?? auction.config.starting_price_per_tonne_eur;
+
+                            return (
+                                <div key={auction.id} className={`flex items-center gap-4 px-4 py-3 rounded-xl border ${statusStyle}`}>
+                                    <Gavel size={14} className="text-slate/40 shrink-0" />
+                                    <div className="flex items-center gap-2 min-w-0">
+                                        <span className={`inline-flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wider`}>
+                                            <span className={`w-1.5 h-1.5 rounded-full ${dotColor} ${isLive ? 'animate-pulse' : ''}`} />
+                                            {statusLabel}
+                                        </span>
+                                    </div>
+                                    <div className="flex items-center gap-4 ml-auto text-xs font-mono text-slate/60 shrink-0">
+                                        <span className="flex items-center gap-1">
+                                            <span className="text-[10px] text-slate/40 uppercase">
+                                                {auction.current_high_bid_eur ? 'Bid' : 'Start'}
+                                            </span>
+                                            <span className="font-semibold text-slate">€{displayPrice.toFixed(2)}/t</span>
+                                        </span>
+                                        <span className="flex items-center gap-1">
+                                            <Users size={11} className="text-slate/30" />
+                                            {auction.bid_count}
+                                        </span>
+                                        <span>{auction.quantity_tonnes.toLocaleString()}t</span>
+                                        {isLive && auction.effective_ends_at && (
+                                            <span className="flex items-center gap-1 text-ember">
+                                                <Timer size={11} />
+                                                <AuctionCountdown endsAt={auction.effective_ends_at} />
+                                            </span>
+                                        )}
+                                        {isSettled && auction.winning_price_per_tonne_eur && (
+                                            <span className="text-emerald-600 font-semibold">
+                                                Won €{auction.winning_price_per_tonne_eur.toFixed(2)}/t
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
 
                 {/* Methodology + registry ID + serial range */}
                 {(listing.methodology || listing.registry_project_id || listing.serial_number_range) && (

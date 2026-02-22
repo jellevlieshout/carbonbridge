@@ -12,7 +12,7 @@ import { EditListingModal } from '../components/seller/EditListingModal';
 import { CreateListingModal } from '../components/seller/CreateListingModal';
 import { CreateAuctionModal } from '../components/seller/CreateAuctionModal';
 import { useCreateListing } from '../modules/shared/queries/useListings';
-import { useCreateAuction } from '../modules/shared/queries/useAuctions';
+import { useCreateAuction, useMyAuctions } from '../modules/shared/queries/useAuctions';
 import type { Route } from "./+types/seller-listings";
 
 export function meta({ }: Route.MetaArgs) {
@@ -33,6 +33,14 @@ export default function SellerListingsPage() {
     const listingsRef = useRef<HTMLDivElement>(null);
     const createMutation = useCreateListing();
     const createAuctionMutation = useCreateAuction();
+    const { data: myAuctions } = useMyAuctions();
+    const auctionsByListing = React.useMemo(() => {
+        const map: Record<string, typeof myAuctions> = {};
+        for (const a of myAuctions || []) {
+            (map[a.listing_id] ??= []).push(a);
+        }
+        return map;
+    }, [myAuctions]);
 
     const { data, isLoading } = useQuery({
         queryKey: ['listings', 'mine'],
@@ -165,6 +173,7 @@ export default function SellerListingsPage() {
                         <SellerListingCard
                             key={listing.id}
                             listing={listing}
+                            auctions={auctionsByListing[listing.id] || []}
                             onEdit={setEditingListing}
                             onStatusChange={handleStatusChange}
                             onArchive={(id) => archiveMutation.mutate(id)}
