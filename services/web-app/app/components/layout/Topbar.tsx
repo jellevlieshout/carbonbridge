@@ -32,7 +32,7 @@ export function Topbar() {
     useEffect(() => {
         const updateTime = () => {
             const now = new Date();
-            setTime(now.toLocaleTimeString('en-GB', { timeZone: 'UTC', hour: '2-digit', minute: '2-digit', second: '2-digit' }) + ' UTC');
+            setTime(now.toLocaleTimeString('en-GB', { timeZone: 'Europe/Stockholm', hour: '2-digit', minute: '2-digit', second: '2-digit' }) + ' CET');
         };
         updateTime();
         const interval = setInterval(updateTime, 1000);
@@ -102,8 +102,8 @@ export function Topbar() {
             <div className="flex items-center gap-6">
                 {/* Market Clock */}
                 <div className="flex flex-col items-end">
-                    <span className="font-mono text-sm font-medium tracking-tight text-slate ">{time || '00:00:00 UTC'}</span>
-                    <span className="text-xs text-slate/60 font-medium">London Session: Active</span>
+                    <span className="font-mono text-sm font-medium tracking-tight text-slate ">{time || '00:00:00 CET'}</span>
+                    <span className="text-xs text-slate/60 font-medium">Stockholm Session: Active</span>
                 </div>
 
                 {/* Notification Bell */}
