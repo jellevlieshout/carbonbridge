@@ -24,13 +24,3 @@ tools:
       - tool: "kong"
       - tool: "tigerbeetle"
 
-  initialize_session:
-    info: |-
-      Initialize **EVERY** session by calling this tool.
-      Returns required development context and ensures the project is running.
-      This tool always needs to be called before doing anything else, regardless of the tasks complexity.
-    run:
-      - id: get-general-context
-        tool: get_dev_context
-      - id: apply-stack-and-await-finish
-        tool: "stack"

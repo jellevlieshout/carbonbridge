@@ -16,7 +16,7 @@ export const useAgentRunDetail = (runId: string | null) => {
         enabled: !!runId,
         refetchInterval: (query) => {
             const status = query.state.data?.status;
-            return status === "running" ? 2000 : false;
+            return status === "running" || status === "awaiting_approval" ? 2000 : false;
         },
     });
 };

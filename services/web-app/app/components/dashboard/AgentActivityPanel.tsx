@@ -268,16 +268,27 @@ export function AgentActivityPanel() {
     const rejectMutation = useAgentReject();
 
     const isRunning = runDetail?.status === 'running';
+    const prevRunCountRef = useRef<number>(0);
 
     // Auto-select first run
     useEffect(() => {
         if (runs?.length && !selectedRunId) setSelectedRunId(runs[0].id);
     }, [runs, selectedRunId]);
 
-    // Auto-select newly triggered
+    // Auto-select newly triggered via mutation response (skip dummy "pending" id)
     useEffect(() => {
-        if (triggerMutation.data?.run_id) setSelectedRunId(triggerMutation.data.run_id);
+        if (triggerMutation.data?.run_id && triggerMutation.data.run_id !== 'pending') {
+            setSelectedRunId(triggerMutation.data.run_id);
+        }
     }, [triggerMutation.data]);
+
+    // Auto-select when a new run appears in the list (e.g. from polling)
+    useEffect(() => {
+        if (runs?.length && runs.length > prevRunCountRef.current && prevRunCountRef.current > 0) {
+            setSelectedRunId(runs[0].id);
+        }
+        prevRunCountRef.current = runs?.length ?? 0;
+    }, [runs]);
 
     // GSAP entrance
     useEffect(() => {
@@ -325,7 +336,7 @@ export function AgentActivityPanel() {
                     <button
                         onClick={handleTrigger}
                         disabled={triggerMutation.isPending}
-                        className="agent-stagger shrink-0 px-6 py-3 bg-linen text-canopy font-sans font-medium rounded-xl hover:bg-linen/90 transition-all duration-300 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2 shadow-sm"
+                        className="agent-stagger shrink-0 px-6 py-3 bg-linen text-canopy font-sans font-medium rounded-xl hover:bg-linen/90 transition-all duration-300 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2 shadow-sm"
                     >
                         {triggerMutation.isPending ? (
                             <>
@@ -609,7 +620,7 @@ export function AgentActivityPanel() {
                                     <button
                                         onClick={() => approveMutation.mutate(runDetail.id)}
                                         disabled={approveMutation.isPending}
-                                        className="w-full py-3 bg-linen text-canopy font-sans font-medium rounded-xl hover:bg-linen/90 transition-colors disabled:opacity-40 flex items-center justify-center gap-2"
+                                        className="w-full py-3 bg-linen text-canopy font-sans font-medium rounded-xl hover:bg-linen/90 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                                     >
                                         {approveMutation.isPending ? (
                                             <><span className="w-3 h-3 border-2 border-canopy/30 border-t-canopy rounded-full animate-spin" />Approving...</>

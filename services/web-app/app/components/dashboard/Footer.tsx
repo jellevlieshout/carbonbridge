@@ -3,35 +3,7 @@ import { Link } from 'react-router';
 
 export function Footer() {
     return (
-        <div className="w-full flex flex-col mt-24">
-            {/* Membership Tiers */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-16">
-                <div className="bg-white border border-mist p-8 rounded-[2rem] shadow-sm">
-                    <h3 className="font-sans font-bold text-slate text-xl mb-4">Starter</h3>
-                    <p className="font-sans text-slate/70 text-sm leading-relaxed mb-6">
-                        Perfect for small businesses beginning their Net Zero journey. Includes basic footprint estimation and manual offset purchases.
-                    </p>
-                    <button className="text-slate font-medium text-sm border-b border-slate pb-1 hover:text-canopy hover:border-canopy transition-colors cursor-pointer">Upgrade to Starter</button>
-                </div>
-
-                <div className="bg-canopy border border-canopy/20 p-8 rounded-[2rem] shadow-sm relative overflow-hidden">
-                    <div className="absolute top-6 right-6 bg-ember text-linen text-[10px] uppercase font-bold tracking-wider px-3 py-1 rounded-full">Active Plan</div>
-                    <h3 className="font-sans font-bold text-linen text-xl mb-4">Professional</h3>
-                    <p className="font-sans text-linen/70 text-sm leading-relaxed mb-6">
-                        Everything you need for full-scale carbon management. Unlocks the autonomous purchasing agent, advanced reporting, and real-time market scanner.
-                    </p>
-                    <span className="text-linen/50 font-medium text-sm">Current Selection</span>
-                </div>
-
-                <div className="bg-white border border-mist p-8 rounded-[2rem] shadow-sm">
-                    <h3 className="font-sans font-bold text-slate text-xl mb-4">Enterprise</h3>
-                    <p className="font-sans text-slate/70 text-sm leading-relaxed mb-6">
-                        For complex multi-national supply chains. Features custom API integrations, dedicated account management, and volume discounts.
-                    </p>
-                    <button className="text-slate font-medium text-sm border-b border-slate pb-1 hover:text-canopy hover:border-canopy transition-colors cursor-pointer">Contact Sales</button>
-                </div>
-            </div>
-
+        <div className="w-full flex flex-col mt-auto pt-24">
             {/* Deep Footer */}
             <footer className="w-full bg-slate text-linen rounded-t-[3rem] p-12 lg:p-16 flex flex-col md:flex-row justify-between gap-12 border-t-[8px] border-canopy relative overflow-hidden">
                 {/* Noise Texture */}

@@ -20,7 +20,11 @@ from typing import List, Literal, Optional, Tuple
 import stripe as stripe_lib
 from pydantic import BaseModel
 from pydantic_ai import Agent, RunContext
-from stripe_agent_toolkit.api import StripeAPI
+
+try:
+    from stripe_agent_toolkit.api import StripeAPI
+except ImportError:
+    StripeAPI = None
 
 from models.entities.couchbase.agent_runs import (
     AgentRunData,
@@ -72,7 +76,7 @@ DEFAULT_MAX_PRICE = 50.0
 
 
 def _stripe_configured() -> bool:
-    return bool(env.parse(STRIPE_SECRET_KEY))
+    return StripeAPI is not None and bool(env.parse(STRIPE_SECRET_KEY))
 
 
 # ---------------------------------------------------------------------------
@@ -519,7 +523,8 @@ async def run_buyer_agent(
             payment_mode = "mock"
             payment_link_url = None
 
-        await order_update_status(order.id, "confirmed")
+        order_status = "confirmed" if _stripe_configured() else "completed"
+        await order_update_status(order.id, order_status)
 
         await _record_step(run_id, step_idx, "tool_call", "Created order and executed payment",
             output={

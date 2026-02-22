@@ -30,7 +30,7 @@ export const HomeView = ({ isLoggedIn, isPageLoaded, isSessionExpired, needsOnbo
     }
 
     if (isLoggedIn) {
-        const destination = userRole === 'seller' ? '/seller/listings' : '/buyer/dashboard';
+        const destination = userRole === 'seller' ? '/seller/listings' : '/buyer/dashboard'; // "both" falls into default
         return <Navigate to={destination} replace />;
     }
 

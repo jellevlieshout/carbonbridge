@@ -34,7 +34,7 @@ async def user_get_by_email(email: str) -> Optional[User]:
 async def user_register(
     email: str,
     hashed_password: str,
-    role: Literal["buyer", "seller", "admin"],
+    role: Literal["buyer", "seller", "both", "admin"],
     **kwargs,
 ) -> User:
     data = UserData(

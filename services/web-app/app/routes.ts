@@ -6,6 +6,8 @@ export default [
     route("buyer/wizard", "routes/wizard.tsx"),
     route("buyer/credits", "routes/buyer-credits.tsx"),
     route("marketplace", "routes/marketplace.tsx"),
+    route("buyer/agent", "routes/buyer-agent.tsx"),
+    route("seller/agent", "routes/seller-agent.tsx"),
     route("seller/listings", "routes/seller-listings.tsx"),
     route("platform/transactions", "routes/platform-transactions.tsx"),
     route("platform/accounting", "routes/platform-accounting.tsx"),

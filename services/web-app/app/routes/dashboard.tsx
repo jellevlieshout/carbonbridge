@@ -16,7 +16,7 @@ export function meta({ }: Route.MetaArgs) {
 
 export default function DashboardPage() {
     return (
-        <div className="flex flex-col gap-10 w-full animate-in fade-in duration-700">
+        <div className="flex flex-col gap-10 w-full flex-1 animate-in fade-in duration-700">
             <HeroPanel />
             <CoreTileRow />
             <MarketplaceSpotlight />

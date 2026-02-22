@@ -38,7 +38,7 @@ export default function DashboardLayout() {
                 <Topbar />
 
                 {/* Scrollable container with top padding matching topbar height */}
-                <div className="flex-1 pt-20 px-8 pb-32 max-w-7xl mx-auto w-full">
+                <div className="flex-1 pt-20 px-8 pb-0 max-w-7xl mx-auto w-full flex flex-col">
                     <Outlet />
                 </div>
             </main>

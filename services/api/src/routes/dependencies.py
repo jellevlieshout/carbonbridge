@@ -53,7 +53,7 @@ async def require_seller(user: dict = Depends(current_user_get)):
     """Dependency to ensure the user has the 'seller' role."""
     db_user = user.get("db_user")
     role = db_user.data.role if db_user else None
-    if role != "seller":
+    if role not in ("seller", "both"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Seller account required",

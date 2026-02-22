@@ -1,21 +1,29 @@
-import React, { useState } from 'react';
-import { LayoutDashboard, Leaf, ShoppingCart, Activity, FileText, Settings, Bot, Sparkles, List } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { LayoutDashboard, Leaf, ShoppingCart, Activity, List, Bot } from 'lucide-react';
 import { NavLink } from 'react-router';
 import { Logo } from '~/modules/shared/components/Logo';
+import { useUserResourcesQuery } from '~/modules/shared/queries/useUserResources';
 
-const navItems = [
-    { label: 'Overview', icon: LayoutDashboard, href: '/buyer/dashboard' },
-    { label: 'Purchase Wizard', icon: Sparkles, href: '/buyer/wizard' },
-    { label: 'My Listings', icon: List, href: '/seller/listings' },
-    { label: 'My Credits', icon: Leaf, href: '/buyer/credits' },
-    { label: 'Marketplace', icon: ShoppingCart, href: '/marketplace' },
-    { label: 'Agent Activity', icon: Activity, href: '/buyer/agent' },
-    { label: 'Reports', icon: FileText, href: '/buyer/reports' },
-    { label: 'Settings', icon: Settings, href: '/buyer/settings' },
+type UserRole = 'buyer' | 'seller' | 'both' | 'admin';
+
+const allNavItems = [
+    { label: 'Overview', icon: LayoutDashboard, href: '/buyer/dashboard', roles: ['buyer', 'seller', 'both'] as UserRole[] },
+    { label: 'My Listings', icon: List, href: '/seller/listings', roles: ['seller', 'both'] as UserRole[] },
+    { label: 'My Credits', icon: Leaf, href: '/buyer/credits', roles: ['buyer', 'both'] as UserRole[] },
+    { label: 'Available Listings', icon: ShoppingCart, href: '/marketplace', roles: ['buyer', 'both'] as UserRole[] },
+    { label: 'Buyer Agent', icon: Bot, href: '/buyer/agent', roles: ['buyer', 'both'] as UserRole[] },
+    { label: 'Seller Agent', icon: Activity, href: '/seller/agent', roles: ['seller', 'both'] as UserRole[] },
 ];
 
 export function Sidebar() {
     const [isHovered, setIsHovered] = useState(false);
+    const { data: userData } = useUserResourcesQuery();
+    const role = (userData?.user?.role ?? 'buyer') as UserRole;
+
+    const navItems = useMemo(
+        () => allNavItems.filter(item => item.roles.includes(role)),
+        [role],
+    );
 
     return (
         <aside
@@ -68,19 +76,6 @@ export function Sidebar() {
 
                 {/* Bottom Actions */}
                 <div className="p-4 space-y-6 shrink-0 pb-8">
-                    {/* Agent Shortcut Button */}
-                    <button className="relative w-full h-12 flex items-center gap-4 px-2 rounded-xl bg-ember text-linen cursor-pointer overflow-hidden group">
-                        {/* Pulsing ring behind icon */}
-                        <div className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-linen/30 animate-ping" />
-
-                        <div className="relative z-10 w-8 flex items-center justify-center shrink-0">
-                            <Bot size={20} className="stroke-[1.5]" />
-                        </div>
-                        <span className={`relative z-10 font-medium whitespace-nowrap transition-opacity duration-300 ${isHovered ? 'opacity-100' : 'opacity-0'}`}>
-                            Carbon Agent
-                        </span>
-                    </button>
-
                     {/* Market Open Status */}
                     <div className="flex items-center gap-4 px-2 h-10">
                         <div className="w-8 flex items-center justify-center shrink-0">
