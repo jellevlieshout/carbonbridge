@@ -1,4 +1,8 @@
-from typing import Any, Dict, List, Optional
+import asyncio
+from typing import Any, Callable, Dict, List, Optional
+
+from couchbase.exceptions import CASMismatchException
+
 from models.entities.couchbase.listings import Listing, ListingData
 
 
@@ -80,56 +84,84 @@ async def listing_get_by_seller(seller_id: str) -> List[Listing]:
     ]
 
 
-async def listing_reserve_quantity(listing_id: str, quantity: float) -> bool:
-    """Reserve (or release) quantity on a listing via read-modify-write.
+async def _listing_cas_retry(
+    listing_id: str,
+    mutator: Callable[[ListingData], Optional[str]],
+    max_retries: int = 5,
+) -> tuple[bool, Optional[str]]:
+    """Read-modify-write a listing with CAS-guarded retry.
 
-    Pass a negative *quantity* to release a previous reservation.
-    Not fully atomic under concurrency — acceptable for hackathon;
-    production would need a CAS-guarded loop.
+    *mutator* receives ``ListingData`` and mutates it in place.  It returns
+    ``None`` on success or an error string to abort early (e.g. "insufficient
+    availability").  On ``CASMismatchException`` the helper re-reads and
+    retries with exponential backoff (10 ms, 20 ms, 40 ms, …).
     """
-    try:
+    backoff_ms = 10
+    for attempt in range(max_retries + 1):
         listing = await Listing.get(listing_id)
         if not listing:
-            return False
-        new_reserved = listing.data.quantity_reserved + quantity
-        # When releasing (negative qty), don't let reserved go below 0
+            return False, f"Listing {listing_id} not found"
+
+        error = mutator(listing.data)
+        if error is not None:
+            return False, error
+
+        try:
+            await Listing.update(listing)
+            return True, None
+        except CASMismatchException:
+            if attempt == max_retries:
+                return False, "Concurrent update conflict — please retry"
+            await asyncio.sleep(backoff_ms / 1000)
+            backoff_ms *= 2
+
+    return False, "Max retries exceeded"
+
+
+async def listing_reserve_quantity(
+    listing_id: str, quantity: float
+) -> tuple[bool, Optional[str]]:
+    """Atomically reserve quantity on a listing (CAS-guarded)."""
+
+    def _mutate(data: ListingData) -> Optional[str]:
+        new_reserved = data.quantity_reserved + quantity
         if quantity < 0:
             new_reserved = max(new_reserved, 0.0)
-        # When reserving, check we don't exceed available
-        available = listing.data.quantity_tonnes - listing.data.quantity_sold
+        available = data.quantity_tonnes - data.quantity_sold
         if new_reserved > available:
-            return False
-        listing.data.quantity_reserved = new_reserved
-        await Listing.update(listing)
-        return True
-    except Exception:
-        return False
+            avail_for_reserve = available - data.quantity_reserved
+            return (
+                f"Insufficient availability: requested {quantity}t "
+                f"but only {avail_for_reserve}t available"
+            )
+        data.quantity_reserved = new_reserved
+        return None
+
+    return await _listing_cas_retry(listing_id, _mutate)
 
 
-async def listing_release_reservation(listing_id: str, quantity: float) -> bool:
-    """Release reserved quantity on a listing."""
-    try:
-        listing = await Listing.get(listing_id)
-        if not listing:
-            return False
-        listing.data.quantity_reserved = max(listing.data.quantity_reserved - quantity, 0.0)
-        await Listing.update(listing)
-        return True
-    except Exception:
-        return False
+async def listing_release_reservation(
+    listing_id: str, quantity: float
+) -> tuple[bool, Optional[str]]:
+    """Atomically release reserved quantity on a listing (CAS-guarded)."""
+
+    def _mutate(data: ListingData) -> Optional[str]:
+        data.quantity_reserved = max(data.quantity_reserved - quantity, 0.0)
+        return None
+
+    return await _listing_cas_retry(listing_id, _mutate)
 
 
-async def listing_confirm_sale(listing_id: str, quantity: float) -> bool:
-    """Move quantity from reserved to sold."""
-    try:
-        listing = await Listing.get(listing_id)
-        if not listing:
-            return False
-        listing.data.quantity_reserved = max(listing.data.quantity_reserved - quantity, 0.0)
-        listing.data.quantity_sold += quantity
-        if listing.data.quantity_sold >= listing.data.quantity_tonnes:
-            listing.data.status = "sold_out"
-        await Listing.update(listing)
-        return True
-    except Exception:
-        return False
+async def listing_confirm_sale(
+    listing_id: str, quantity: float
+) -> tuple[bool, Optional[str]]:
+    """Atomically move quantity from reserved to sold (CAS-guarded)."""
+
+    def _mutate(data: ListingData) -> Optional[str]:
+        data.quantity_reserved = max(data.quantity_reserved - quantity, 0.0)
+        data.quantity_sold += quantity
+        if data.quantity_sold >= data.quantity_tonnes:
+            data.status = "sold_out"
+        return None
+
+    return await _listing_cas_retry(listing_id, _mutate)

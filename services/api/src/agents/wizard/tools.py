@@ -380,18 +380,9 @@ async def tool_create_order_draft(
     if listing.data.status != "active":
         return {"error": f"Listing {listing_id} is not active"}
 
-    available = round(
-        listing.data.quantity_tonnes
-        - listing.data.quantity_reserved
-        - listing.data.quantity_sold,
-        2,
-    )
-    if quantity > available:
-        return {"error": f"Only {available}t available on listing {listing_id}"}
-
-    reserved = await listing_reserve_quantity(listing_id, quantity)
+    reserved, err = await listing_reserve_quantity(listing_id, quantity)
     if not reserved:
-        return {"error": f"Could not reserve {quantity}t on listing {listing_id}"}
+        return {"error": err}
 
     subtotal = round(quantity * listing.data.price_per_tonne_eur, 2)
     line_item = OrderLineItem(

@@ -456,9 +456,9 @@ async def run_buyer_agent(
         if not listing:
             raise ValueError(f"Listing {decision.listing_id} not found for purchase")
 
-        reserved = await listing_reserve_quantity(decision.listing_id, decision.quantity_tonnes)
+        reserved, reserve_err = await listing_reserve_quantity(decision.listing_id, decision.quantity_tonnes)
         if not reserved:
-            raise RuntimeError(f"Could not reserve {decision.quantity_tonnes}t on listing {decision.listing_id}")
+            raise RuntimeError(reserve_err)
 
         line_items = [
             OrderLineItem(

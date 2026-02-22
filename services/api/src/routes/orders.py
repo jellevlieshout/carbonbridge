@@ -6,7 +6,12 @@ import stripe
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
-from models.operations.listings import listing_get, listing_update, listing_reserve_quantity
+from models.operations.listings import (
+    listing_get,
+    listing_confirm_sale,
+    listing_release_reservation,
+    listing_reserve_quantity,
+)
 from models.operations.orders import (
     order_create,
     order_get,
@@ -110,7 +115,7 @@ async def route_order_create(
         if existing.data.status == "pending":
             logger.info(f"Auto-cancelling stale pending order {existing.id}")
             for li in existing.data.line_items:
-                await listing_reserve_quantity(li.listing_id, -li.quantity)
+                await listing_release_reservation(li.listing_id, li.quantity)
             if existing.data.stripe_payment_intent_id:
                 try:
                     s = _get_stripe()
@@ -131,19 +136,9 @@ async def route_order_create(
             if listing.data.status != "active":
                 raise HTTPException(status_code=400, detail=f"Listing {item.listing_id} is not active")
 
-            available = listing.data.quantity_tonnes - listing.data.quantity_reserved - listing.data.quantity_sold
-            if item.quantity > available:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Listing {item.listing_id}: requested {item.quantity}t but only {available}t available",
-                )
-
-            reserved = await listing_reserve_quantity(item.listing_id, item.quantity)
+            reserved, err = await listing_reserve_quantity(item.listing_id, item.quantity)
             if not reserved:
-                raise HTTPException(
-                    status_code=409,
-                    detail=f"Could not reserve {item.quantity}t on listing {item.listing_id}",
-                )
+                raise HTTPException(status_code=409, detail=err)
             reserved_items.append((item.listing_id, item.quantity))
 
             subtotal = round(item.quantity * listing.data.price_per_tonne_eur, 2)
@@ -193,7 +188,7 @@ async def route_order_create(
         # Release all reservations made so far
         for listing_id, qty in reserved_items:
             try:
-                await listing_reserve_quantity(listing_id, -qty)
+                await listing_release_reservation(listing_id, qty)
             except Exception as rollback_err:
                 logger.error(f"Failed to rollback reservation on {listing_id}: {rollback_err}")
         raise
@@ -248,7 +243,7 @@ async def route_order_cancel(
 
     # Release reserved quantities
     for li in order.data.line_items:
-        await listing_reserve_quantity(li.listing_id, -li.quantity)
+        await listing_release_reservation(li.listing_id, li.quantity)
 
     # Cancel Stripe PaymentIntent if exists
     if order.data.stripe_payment_intent_id:
@@ -292,13 +287,7 @@ async def route_confirm_payment(
         await order_record_ledger_entries(order.id)
 
         for li in order.data.line_items:
-            listing = await listing_get(li.listing_id)
-            if listing:
-                listing.data.quantity_reserved -= li.quantity
-                listing.data.quantity_sold += li.quantity
-                if listing.data.quantity_sold >= listing.data.quantity_tonnes:
-                    listing.data.status = "sold_out"
-                await listing_update(listing)
+            await listing_confirm_sale(li.listing_id, li.quantity)
 
         logger.info(f"Order {order.id} completed via payment confirmation")
         order = await order_get(order.id)
@@ -337,13 +326,7 @@ async def route_order_mock_confirm(
 
     # Move reserved → sold on each listing
     for li in order.data.line_items:
-        listing = await listing_get(li.listing_id)
-        if listing:
-            listing.data.quantity_reserved -= li.quantity
-            listing.data.quantity_sold += li.quantity
-            if listing.data.quantity_sold >= listing.data.quantity_tonnes:
-                listing.data.status = "sold_out"
-            await listing_update(listing)
+        await listing_confirm_sale(li.listing_id, li.quantity)
 
     updated = await order_get(order_id)
     logger.info(f"Mock payment confirmed for order {order_id}")
