@@ -7,7 +7,11 @@ import { useWizardSSE } from "../hooks/useWizardSSE";
 import { useWizardNavigation } from "../hooks/useWizardNavigation";
 import { WizardView } from "../views/WizardView";
 
-export function WizardPresenter() {
+interface WizardPresenterProps {
+  onComplete?: () => void;
+}
+
+export function WizardPresenter({ onComplete }: WizardPresenterProps = {}) {
   const { data: session, isLoading, isError, error } = useWizardSession();
   const sendMessageMutation = useWizardSendMessage();
 
@@ -50,6 +54,12 @@ export function WizardPresenter() {
     }, []),
     onDone: handleDone,
     onError: handleError,
+    onBuyerHandoff: useCallback((_outcome: string, _message: string) => {
+      onComplete?.();
+    }, [onComplete]),
+    onAutobuyWaitlist: useCallback((_optedIn: boolean) => {
+      onComplete?.();
+    }, [onComplete]),
   });
 
   const handleSend = useCallback(
@@ -103,14 +113,26 @@ export function WizardPresenter() {
   }
 
   return (
-    <WizardView
-      messages={messages}
-      streamingText={streamingText}
-      isStreaming={isStreaming}
-      currentIndex={currentIndex}
-      totalSteps={totalSteps}
-      stepLabel={label}
-      onSend={handleSend}
-    />
+    <>
+      <WizardView
+        messages={messages}
+        streamingText={streamingText}
+        isStreaming={isStreaming}
+        currentIndex={currentIndex}
+        totalSteps={totalSteps}
+        stepLabel={label}
+        onSend={handleSend}
+      />
+      {onComplete && (
+        <div className="flex justify-center mt-4">
+          <button
+            onClick={onComplete}
+            className="text-sm text-slate/40 hover:text-slate/60 transition-colors cursor-pointer bg-transparent border-0 underline underline-offset-2"
+          >
+            Skip & Continue
+          </button>
+        </div>
+      )}
+    </>
   );
 }

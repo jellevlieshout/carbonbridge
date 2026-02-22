@@ -17,7 +17,7 @@ class BuyerProfile(BaseModel):
 class UserData(BaseCouchbaseEntityData):
     email: str
     hashed_password: Optional[str] = Field(default=None, exclude=True)
-    role: Literal["buyer", "seller", "admin"] = "buyer"
+    role: Literal["buyer", "seller", "both", "admin"] = "buyer"
     company_name: Optional[str] = None
     company_size_employees: Optional[int] = None
     sector: Optional[str] = None

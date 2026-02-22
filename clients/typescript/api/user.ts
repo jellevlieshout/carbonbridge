@@ -1,7 +1,7 @@
 import { get, put } from './client';
 
 export interface OnboardingData {
-    role: 'buyer' | 'seller';
+    role: 'buyer' | 'seller' | 'both';
     company_name: string;
     sector?: string;
     country?: string;

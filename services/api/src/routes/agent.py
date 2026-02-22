@@ -10,6 +10,7 @@ POST /agent/runs/{id}/approve    — approve a proposed purchase
 POST /agent/runs/{id}/reject     — reject a proposed purchase
 """
 
+import hashlib
 from datetime import datetime
 from typing import Any, List, Optional
 
@@ -20,7 +21,9 @@ from agents.buyer.agent import run_buyer_agent
 from agents.seller.agent import run_seller_advisory_agent
 from models.entities.couchbase.orders import OrderLineItem
 from models.entities.couchbase.users import User
+from models.entities.couchbase.agent_runs import TraceStep
 from models.operations.agent_runs import (
+    agent_run_append_step,
     agent_run_complete,
     agent_run_get,
     agent_run_get_by_owner,
@@ -29,11 +32,25 @@ from models.operations.listings import listing_get, listing_reserve_quantity
 from models.operations.orders import (
     order_create,
     order_set_payment_intent,
+    order_set_payment_link,
     order_update_status,
 )
 from utils import env, log
 
 from .dependencies import require_authenticated, require_seller
+
+STRIPE_SECRET_KEY = env.EnvVarSpec(
+    id="STRIPE_SECRET_KEY", is_optional=True, is_secret=True
+)
+WEB_APP_URL = env.EnvVarSpec(id="WEB_APP_URL", is_optional=True)
+
+
+def _stripe_configured() -> bool:
+    try:
+        from stripe_agent_toolkit.api import StripeAPI  # noqa: F401
+        return bool(env.parse(STRIPE_SECRET_KEY))
+    except ImportError:
+        return False
 
 logger = log.get_logger(__name__)
 
@@ -234,13 +251,82 @@ async def route_agent_run_approve(
     ]
     order = await order_create(buyer_id, line_items, total_cost)
 
-    # Mock payment
-    import hashlib
-    mock_id = f"pi_agent_{hashlib.sha256(order.id.encode()).hexdigest()[:16]}"
-    await order_set_payment_intent(order.id, mock_id)
-    await order_update_status(order.id, "confirmed")
+    # Payment via Stripe Agent Toolkit (Payment Link) or mock fallback
+    payment_link_url = None
+    payment_id = None
+    payment_mode = "mock"
 
-    # Complete the run
+    if _stripe_configured():
+        from stripe_agent_toolkit.api import StripeAPI
+
+        key = env.parse(STRIPE_SECRET_KEY)
+        stripe_agent = StripeAPI(secret_key=key)
+        web_app_url = env.parse(WEB_APP_URL) or "http://localhost:8000"
+
+        product = stripe_agent.run(
+            "create_product",
+            name=f"Carbon Credits — {listing.data.project_name}",
+            metadata={
+                "carbonbridge_order_id": order.id,
+                "listing_id": listing.id,
+            },
+        )
+        product_id = product.get("id") if isinstance(product, dict) else product
+
+        price = stripe_agent.run(
+            "create_price",
+            product=product_id,
+            unit_amount=int(price_per_tonne * 100),
+            currency="eur",
+        )
+        price_id = price.get("id") if isinstance(price, dict) else price
+
+        payment_link = stripe_agent.run(
+            "create_payment_link",
+            line_items=[{"price": price_id, "quantity": int(quantity)}],
+            metadata={
+                "carbonbridge_order_id": order.id,
+                "agent_run_id": run_id,
+                "buyer_id": buyer_id,
+            },
+            after_completion={
+                "type": "redirect",
+                "redirect": {"url": f"{web_app_url}/buyer/credits?order={order.id}"},
+            },
+        )
+        payment_link_url = payment_link.get("url") if isinstance(payment_link, dict) else str(payment_link)
+        payment_id = payment_link.get("id", "") if isinstance(payment_link, dict) else ""
+        payment_mode = "stripe_agent_toolkit"
+
+        await order_set_payment_link(order.id, payment_link_url)
+        await order_set_payment_intent(order.id, payment_id)
+    else:
+        payment_id = f"pi_agent_{hashlib.sha256(order.id.encode()).hexdigest()[:16]}"
+        await order_set_payment_intent(order.id, payment_id)
+
+    # Stripe: stay "confirmed" until webhook fires payment_intent.succeeded → "completed"
+    # Mock: no webhook, so go straight to "completed"
+    order_status = "confirmed" if _stripe_configured() else "completed"
+    await order_update_status(order.id, order_status)
+
+    # Record payment trace step so frontend can render the payment link
+    await agent_run_append_step(run_id, TraceStep(
+        step_index=len(run.data.trace_steps),
+        step_type="tool_call",
+        label="Created order and executed payment",
+        input={"action": "approve"},
+        output={
+            "order_id": order.id,
+            "payment_intent_id": payment_id,
+            "payment_mode": payment_mode,
+            "payment_link_url": payment_link_url,
+            "total_eur": total_cost,
+            "quantity_tonnes": quantity,
+            "listing_id": listing.id,
+        },
+        duration_ms=None,
+    ))
+
     await agent_run_complete(
         run_id,
         action_taken="purchased",

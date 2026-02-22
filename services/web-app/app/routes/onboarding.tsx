@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { userOnboardingSubmit, type OnboardingData } from '@clients/api/user';
 import { Logo } from '~/modules/shared/components/Logo';
+import { WizardPresenter } from '~/modules/wizard/presenters/WizardPresenter';
 import {
     ShoppingCart,
     Leaf,
@@ -76,7 +77,7 @@ export default function OnboardingPage() {
     const navigate = useNavigate();
     const queryClient = useQueryClient();
     const [step, setStep] = useState(0);
-    const [role, setRole] = useState<'buyer' | 'seller' | null>(null);
+    const [role, setRole] = useState<'buyer' | 'seller' | 'both' | null>(null);
 
     // Shared fields
     const [companyName, setCompanyName] = useState('');
@@ -95,10 +96,11 @@ export default function OnboardingPage() {
         onSuccess: async (data) => {
             queryClient.setQueryData(['userResources'], data);
             await queryClient.invalidateQueries({ queryKey: ['userResources'] });
-            if (role === 'buyer') {
-                navigate('/buyer/dashboard', { replace: true });
-            } else {
-                navigate('/seller/listings', { replace: true });
+            if (role === 'buyer' || role === 'both') {
+                // Advance to wizard step instead of navigating away
+                setStep(3);
+            } else if (role === 'seller') {
+                navigate('/seller/agent', { replace: true });
             }
         },
     });
@@ -120,7 +122,7 @@ export default function OnboardingPage() {
             company_size_employees: companySize ? parseInt(companySize) : undefined,
         };
 
-        if (role === 'buyer') {
+        if (role === 'buyer' || role === 'both') {
             data.buyer_profile = {
                 annual_co2_tonnes_estimate: annualCo2 ? parseFloat(annualCo2) : undefined,
                 primary_offset_motivation: motivation || undefined,
@@ -134,7 +136,10 @@ export default function OnboardingPage() {
 
     const canProceedStep0 = role !== null;
     const canProceedStep1 = companyName.trim().length > 0;
-    const isLastStep = role === 'seller' ? step === 1 : step === 2;
+    const showBuyerProfile = role === 'buyer' || role === 'both';
+    // Sellers finish at step 1, buyers submit at step 2 then advance to wizard (step 3)
+    const isSubmitStep = role === 'seller' ? step === 1 : step === 2;
+    const isWizardStep = step === 3 && showBuyerProfile;
 
     return (
         <div className="min-h-screen bg-linen flex flex-col items-center justify-center p-4">
@@ -152,7 +157,7 @@ export default function OnboardingPage() {
 
                 {/* Progress indicator */}
                 <div className="flex items-center justify-center gap-2 mb-8">
-                    {[0, 1, ...(role === 'buyer' ? [2] : [])].map((s) => (
+                    {[0, 1, ...(showBuyerProfile ? [2, 3] : [])].map((s) => (
                         <div
                             key={s}
                             className={`h-1.5 rounded-full transition-all duration-500 ${s === step ? 'w-8 bg-canopy' : s < step ? 'w-8 bg-canopy/40' : 'w-8 bg-slate/15'
@@ -161,8 +166,8 @@ export default function OnboardingPage() {
                     ))}
                 </div>
 
-                {/* Card */}
-                <div className="bg-white rounded-2xl border border-mist shadow-sm overflow-hidden">
+                {/* Card — hidden on wizard step which has its own UI */}
+                {!isWizardStep && <div className="bg-white rounded-2xl border border-mist shadow-sm overflow-hidden">
                     {/* Step 0: Role Selection */}
                     {step === 0 && (
                         <div className="p-10">
@@ -173,7 +178,7 @@ export default function OnboardingPage() {
                                 How would you like to use the platform?
                             </p>
 
-                            <div className="grid grid-cols-2 gap-4 mt-8">
+                            <div className="grid grid-cols-3 gap-4 mt-8">
                                 <button
                                     onClick={() => setRole('buyer')}
                                     className={`group relative flex flex-col items-center gap-4 p-8 rounded-xl border-2 transition-all cursor-pointer bg-transparent ${role === 'buyer'
@@ -208,6 +213,25 @@ export default function OnboardingPage() {
                                         <h3 className="font-sans font-semibold text-slate text-lg">Seller</h3>
                                         <p className="text-slate/50 text-xs mt-1 leading-relaxed">
                                             List and sell verified carbon credits
+                                        </p>
+                                    </div>
+                                </button>
+
+                                <button
+                                    onClick={() => setRole('both')}
+                                    className={`group relative flex flex-col items-center gap-4 p-8 rounded-xl border-2 transition-all cursor-pointer bg-transparent ${role === 'both'
+                                        ? 'border-canopy bg-canopy/5'
+                                        : 'border-mist hover:border-canopy/30'
+                                        }`}
+                                >
+                                    <div className={`w-16 h-16 rounded-2xl flex items-center justify-center transition-colors ${role === 'both' ? 'bg-canopy text-linen' : 'bg-mist/50 text-slate/50 group-hover:bg-canopy/10 group-hover:text-canopy'
+                                        }`}>
+                                        <Users size={28} strokeWidth={1.5} />
+                                    </div>
+                                    <div className="text-center">
+                                        <h3 className="font-sans font-semibold text-slate text-lg">Both</h3>
+                                        <p className="text-slate/50 text-xs mt-1 leading-relaxed">
+                                            Buy and sell carbon credits on the platform
                                         </p>
                                     </div>
                                 </button>
@@ -294,7 +318,7 @@ export default function OnboardingPage() {
                     )}
 
                     {/* Step 2: Buyer Profile (only for buyers) */}
-                    {step === 2 && role === 'buyer' && (
+                    {step === 2 && showBuyerProfile && (
                         <div className="p-10">
                             <h1 className="font-serif italic text-3xl text-slate text-center">
                                 Your Carbon Profile
@@ -398,7 +422,7 @@ export default function OnboardingPage() {
                             <div />
                         )}
 
-                        {isLastStep ? (
+                        {isSubmitStep ? (
                             <button
                                 onClick={handleSubmit}
                                 disabled={mutation.isPending || (step === 1 && !canProceedStep1)}
@@ -407,7 +431,7 @@ export default function OnboardingPage() {
                                 {mutation.isPending ? (
                                     <Loader2 size={16} className="animate-spin" />
                                 ) : null}
-                                Get Started
+                                {role === 'seller' ? 'Get Started' : 'Continue'}
                                 <ArrowRight size={16} />
                             </button>
                         ) : (
@@ -430,10 +454,15 @@ export default function OnboardingPage() {
                             </p>
                         </div>
                     )}
-                </div>
+                </div>}
+
+                {/* Step 3: Wizard Agent (only for buyers) */}
+                {isWizardStep && (
+                    <WizardPresenter onComplete={() => navigate('/buyer/agent', { replace: true })} />
+                )}
 
                 {/* Skip option for buyer profile step */}
-                {step === 2 && role === 'buyer' && (
+                {step === 2 && showBuyerProfile && (
                     <p className="text-center mt-4 text-xs text-slate/40">
                         All fields are optional — you can update them later in settings.
                     </p>

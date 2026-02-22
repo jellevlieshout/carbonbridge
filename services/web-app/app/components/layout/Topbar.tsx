@@ -26,7 +26,8 @@ export function Topbar() {
     const companyName = user?.company_name || 'CarbonBridge User';
     const sector = user?.sector;
     const role = user?.role;
-    const tagLabel = [sector, role ? (role === 'buyer' ? 'Buyer' : 'Seller') : null].filter(Boolean).join(' / ');
+    const roleLabel = role === 'buyer' ? 'Buyer' : role === 'seller' ? 'Seller' : role === 'both' ? 'Buyer & Seller' : null;
+    const tagLabel = [sector, roleLabel].filter(Boolean).join(' / ');
 
     useEffect(() => {
         const updateTime = () => {

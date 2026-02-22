@@ -52,8 +52,8 @@ async def route_user_onboarding(
     if not user_id:
         raise HTTPException(status_code=400, detail="User ID not found in token")
 
-    if body.role not in ("buyer", "seller"):
-        raise HTTPException(status_code=400, detail="Role must be 'buyer' or 'seller'")
+    if body.role not in ("buyer", "seller", "both"):
+        raise HTTPException(status_code=400, detail="Role must be 'buyer', 'seller', or 'both'")
 
     try:
         updated = await user_update_onboarding(user_id, body.model_dump(exclude_none=True))
