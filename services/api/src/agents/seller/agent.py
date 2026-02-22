@@ -343,7 +343,7 @@ async def run_seller_advisory_agent(
 
         start = time.monotonic()
         await _record_step(run_id, step_idx, "reasoning", "Starting Gemini listing analysis",
-            output={"model": "gemini-3-flash-preview"},
+            output={"model": "gemini-2.5-flash"},
         )
         step_idx += 1
 

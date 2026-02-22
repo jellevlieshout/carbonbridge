@@ -1,5 +1,7 @@
 import React, { useState, useCallback, useEffect, useRef } from "react";
 import { useNavigate } from "react-router";
+import { loadStripe } from "@stripe/stripe-js";
+import { Elements } from "@stripe/react-stripe-js";
 import { LoaderCircle, AlertTriangle, Sparkles, ArrowRight, Bot, ShoppingCart, CheckCircle2 } from "lucide-react";
 import type { ConversationMessage, WizardStep } from "../types";
 import { useWizardSession } from "../hooks/useWizardSession";
@@ -7,7 +9,10 @@ import { useWizardSendMessage } from "../hooks/useWizardSendMessage";
 import { useWizardSSE } from "../hooks/useWizardSSE";
 import { useWizardNavigation } from "../hooks/useWizardNavigation";
 import { useMockConfirmOrder } from "~/modules/shared/queries/useOrders";
+import { CheckoutForm } from "~/components/buyer/CheckoutForm";
 import { WizardView } from "../views/WizardView";
+
+const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLIC_KEY || "");
 
 interface WizardPresenterProps {
   onComplete?: () => void;
@@ -26,6 +31,7 @@ export function WizardPresenter({ onComplete }: WizardPresenterProps = {}) {
   const [checkoutOrderId, setCheckoutOrderId] = useState<string | null>(null);
   const [checkoutTotalEur, setCheckoutTotalEur] = useState<number>(0);
   const [checkoutProjectName, setCheckoutProjectName] = useState<string>("");
+  const [checkoutClientSecret, setCheckoutClientSecret] = useState<string>("");
   const [suggestions, setSuggestions] = useState<string[]>([]);
 
   const autoStarted = useRef(false);
@@ -84,11 +90,12 @@ export function WizardPresenter({ onComplete }: WizardPresenterProps = {}) {
       [],
     ),
     onCheckoutReady: useCallback(
-      (orderId: string, totalEur: number, projectName: string) => {
+      (orderId: string, totalEur: number, projectName: string, clientSecret: string) => {
         isCompleteRef.current = true;
         setCheckoutOrderId(orderId);
         setCheckoutTotalEur(totalEur);
         setCheckoutProjectName(projectName);
+        setCheckoutClientSecret(clientSecret);
         setCompletionType("checkout");
         setIsComplete(true);
         setSuggestions([]);
@@ -166,6 +173,7 @@ export function WizardPresenter({ onComplete }: WizardPresenterProps = {}) {
         checkoutOrderId={checkoutOrderId}
         checkoutTotalEur={checkoutTotalEur}
         checkoutProjectName={checkoutProjectName}
+        checkoutClientSecret={checkoutClientSecret}
         onContinue={() => onComplete?.()}
       />
     );
@@ -232,6 +240,7 @@ interface WizardCompletionScreenProps {
   checkoutOrderId?: string | null;
   checkoutTotalEur?: number;
   checkoutProjectName?: string;
+  checkoutClientSecret?: string;
   onContinue: () => void;
 }
 
@@ -240,12 +249,15 @@ function WizardCompletionScreen({
   checkoutOrderId,
   checkoutTotalEur,
   checkoutProjectName,
+  checkoutClientSecret,
   onContinue,
 }: WizardCompletionScreenProps) {
   const navigate = useNavigate();
   const mockConfirm = useMockConfirmOrder();
   const [paymentDone, setPaymentDone] = useState(false);
   const [paymentLoading, setPaymentLoading] = useState(false);
+
+  const isMockMode = !checkoutClientSecret || checkoutClientSecret.startsWith("mock_secret_");
 
   if (type === "checkout" && checkoutOrderId) {
     const handleSimulatePayment = () => {
@@ -257,6 +269,10 @@ function WizardCompletionScreen({
         },
         onError: () => setPaymentLoading(false),
       });
+    };
+
+    const handleStripeSuccess = () => {
+      setPaymentDone(true);
     };
 
     if (paymentDone) {
@@ -298,26 +314,34 @@ function WizardCompletionScreen({
             Confirm to complete your carbon offset purchase.
           </p>
         </div>
-        <div className="flex flex-col items-center gap-3">
-          <button
-            onClick={handleSimulatePayment}
-            disabled={paymentLoading}
-            className="flex items-center gap-2 px-6 py-3 rounded-full text-sm font-semibold bg-canopy text-linen hover:bg-canopy/90 transition-colors cursor-pointer border-0 disabled:opacity-60 disabled:cursor-not-allowed"
-          >
-            {paymentLoading ? (
-              <LoaderCircle size={16} className="animate-spin" />
-            ) : (
-              <CheckCircle2 size={16} />
-            )}
-            {paymentLoading ? "Processing…" : "Confirm Purchase"}
-          </button>
-          <button
-            onClick={() => navigate("/buyer/credits")}
-            className="text-sm text-slate/40 hover:text-slate/60 transition-colors cursor-pointer bg-transparent border-0 underline underline-offset-2"
-          >
-            View My Orders instead
-          </button>
-        </div>
+        {isMockMode ? (
+          <div className="flex flex-col items-center gap-3">
+            <button
+              onClick={handleSimulatePayment}
+              disabled={paymentLoading}
+              className="flex items-center gap-2 px-6 py-3 rounded-full text-sm font-semibold bg-canopy text-linen hover:bg-canopy/90 transition-colors cursor-pointer border-0 disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {paymentLoading ? (
+                <LoaderCircle size={16} className="animate-spin" />
+              ) : (
+                <CheckCircle2 size={16} />
+              )}
+              {paymentLoading ? "Processing…" : "Confirm Purchase"}
+            </button>
+            <button
+              onClick={() => navigate("/buyer/credits")}
+              className="text-sm text-slate/40 hover:text-slate/60 transition-colors cursor-pointer bg-transparent border-0 underline underline-offset-2"
+            >
+              View My Orders instead
+            </button>
+          </div>
+        ) : (
+          <div className="w-full max-w-md mx-auto">
+            <Elements stripe={stripePromise} options={{ clientSecret: checkoutClientSecret }}>
+              <CheckoutForm clientSecret={checkoutClientSecret!} onSuccess={handleStripeSuccess} />
+            </Elements>
+          </div>
+        )}
       </div>
     );
   }

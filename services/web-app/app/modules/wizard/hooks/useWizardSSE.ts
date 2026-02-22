@@ -10,7 +10,7 @@ interface UseWizardSSEOptions {
   onBuyerHandoff?: (outcome: string, message: string) => void;
   onAutobuyWaitlist?: (optedIn: boolean) => void;
   onSuggestions?: (suggestions: string[]) => void;
-  onCheckoutReady?: (orderId: string, totalEur: number, projectName: string) => void;
+  onCheckoutReady?: (orderId: string, totalEur: number, projectName: string, clientSecret: string) => void;
 }
 
 async function fetchSSE(url: string, signal: AbortSignal): Promise<Response> {
@@ -131,7 +131,7 @@ export const useWizardSSE = ({
                   onSuggestions?.(event.suggestions);
                   break;
                 case "checkout_ready":
-                  onCheckoutReady?.(event.order_id, event.total_eur, event.project_name);
+                  onCheckoutReady?.(event.order_id, event.total_eur, event.project_name, event.client_secret);
                   break;
               }
             } catch {
