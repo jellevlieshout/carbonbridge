@@ -1,6 +1,7 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
+import { ScanEye, CircleDollarSign, BrainCircuit, Target, Leaf, PauseCircle, ShieldCheck, HandCoins, CircleCheck, Clock, ChevronDown } from 'lucide-react';
 import { useAgentRuns, useAgentRunDetail, useAgentTrigger, useAgentApprove, useAgentReject } from '../../modules/shared/queries/useAgentRuns';
 import type { AgentRunSummary, TraceStep } from '@clients/api/agent';
 import { toast } from 'sonner';
@@ -9,12 +10,15 @@ gsap.registerPlugin(ScrollTrigger);
 
 const NOISE_BG = "url(\"data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E\")";
 
-/* ── Transform trace steps into friendly stream messages ──────── */
-type StreamTag = 'SCAN' | 'MATCH' | 'ALERT' | 'HOLD' | 'BUY' | 'PAY' | 'DONE';
+/* ── Transform trace steps into friendly stream cards ──────── */
+type StreamIcon = 'scan' | 'dollar' | 'brain' | 'target' | 'leaf' | 'pause' | 'shield' | 'handcoins' | 'done' | 'clock';
+type StreamTone = 'neutral' | 'success' | 'warning' | 'hold' | 'info' | 'payment';
 
-interface StreamMessage {
-    tag: StreamTag;
-    text: string;
+interface StreamCard {
+    icon: StreamIcon;
+    tone: StreamTone;
+    title: string;
+    body?: string;
     detail?: string;
     time: string;
 }
@@ -59,8 +63,7 @@ function extractListingCards(steps: TraceStep[]): ListingCard[] {
     return cards;
 }
 
-function traceToStream(step: TraceStep, triggeredAt: string | null): StreamMessage {
-    // Compute a time offset from trigger
+function traceToCard(step: TraceStep, triggeredAt: string | null): StreamCard {
     const base = triggeredAt ? new Date(triggeredAt) : new Date();
     const offset = step.duration_ms || 0;
     const t = new Date(base.getTime() + offset);
@@ -70,74 +73,74 @@ function traceToStream(step: TraceStep, triggeredAt: string | null): StreamMessa
 
     switch (step.label) {
         case 'Agent run initialized':
-            return { tag: 'SCAN', text: 'Autonomous agent triggered. Initializing market scan...', time };
+            return { icon: 'scan', tone: 'neutral', title: 'Scanning Marketplace', body: 'Autonomous agent triggered', time };
         case 'Loaded buyer profile and criteria':
             return {
-                tag: 'SCAN',
-                text: `Profile loaded. Budget: €${Number(out.monthly_budget_eur || 0).toLocaleString()}/month.`,
+                icon: 'target', tone: 'info', title: 'Criteria Loaded',
+                body: `€${Number(out.monthly_budget_eur || 0).toLocaleString()}/mo budget`,
                 detail: out.preferred_project_types?.length
-                    ? `Criteria: ${out.preferred_project_types.join(', ')} projects · max €${Number(out.max_price_eur || 0).toFixed(0)}/t · vintage ≥${out.min_vintage_year || '—'}`
+                    ? `${out.preferred_project_types.join(', ')} · max €${Number(out.max_price_eur || 0).toFixed(0)}/t · vintage ≥${out.min_vintage_year || '—'}`
                     : undefined,
                 time,
             };
         case 'Budget check passed':
-            return { tag: 'MATCH', text: `Budget verified — €${Number(out.remaining_eur || 0).toLocaleString()} available this cycle.`, time };
+            return { icon: 'dollar', tone: 'success', title: 'Budget OK', body: `€${Number(out.remaining_eur || 0).toLocaleString()} remaining`, time };
         case 'Monthly budget exhausted':
-            return { tag: 'HOLD', text: `Budget exhausted. €${Number(out.remaining_eur || 0).toFixed(0)} remaining. Pausing until next cycle.`, time };
+            return { icon: 'pause', tone: 'hold', title: 'Budget Exhausted', body: `€${Number(out.remaining_eur || 0).toFixed(0)} left — pausing until next cycle`, time };
         case 'Starting Gemini listing analysis':
-            return { tag: 'SCAN', text: 'Cross-referencing listings against buyer criteria via Gemini AI...', detail: `Model: ${out.model || 'gemini-3-flash-preview'}`, time };
+            return { icon: 'brain', tone: 'info', title: 'AI Evaluation', body: 'Scoring listings against your criteria', detail: out.model ? `Model: ${out.model}` : undefined, time };
         case 'Gemini analysis complete':
             if (out.action === 'skip') return {
-                tag: 'HOLD',
-                text: 'Analysis complete. No listings meet quality threshold this cycle.',
-                detail: out.rationale ? String(out.rationale).slice(0, 180) : undefined,
+                icon: 'pause', tone: 'hold', title: 'Below Threshold',
+                body: 'No listings meet quality criteria this cycle',
+                detail: out.rationale ? String(out.rationale) : undefined,
                 time,
             };
             if (out.action === 'propose') return {
-                tag: 'ALERT',
-                text: `Match found — €${Number(out.total_cost_eur || 0).toFixed(2)} for ${out.quantity_tonnes || '?'}t. Awaiting approval.`,
-                detail: out.rationale ? String(out.rationale).slice(0, 180) : undefined,
+                icon: 'shield', tone: 'warning', title: 'Approval Required',
+                body: `${out.quantity_tonnes || '?'}t for €${Number(out.total_cost_eur || 0).toFixed(2)}`,
+                detail: out.rationale ? String(out.rationale) : undefined,
                 time,
             };
             return {
-                tag: 'MATCH',
-                text: `Analysis complete. Best match: ${out.quantity_tonnes || '?'}t at €${Number(out.total_cost_eur || 0).toFixed(2)}.`,
-                detail: out.rationale ? String(out.rationale).slice(0, 180) : undefined,
+                icon: 'leaf', tone: 'success', title: 'Match Found',
+                body: `${out.quantity_tonnes || '?'}t at €${Number(out.total_cost_eur || 0).toFixed(2)}`,
+                detail: out.rationale ? String(out.rationale) : undefined,
                 time,
             };
         case 'Selected best match':
             return {
-                tag: 'MATCH',
-                text: `Selected: ${out.project_name || 'Listing'} — ${out.quantity_tonnes || '?'}t at €${Number(out.price_per_tonne_eur || 0).toFixed(2)}/tCO₂e.`,
-                detail: out.score ? `Matching score: ${Number(out.score).toFixed(2)}` : undefined,
+                icon: 'leaf', tone: 'success', title: out.project_name || 'Credit Selected',
+                body: `${out.quantity_tonnes || '?'}t · €${Number(out.price_per_tonne_eur || 0).toFixed(2)}/tCO₂e`,
+                detail: out.score ? `Score: ${Number(out.score).toFixed(2)}` : undefined,
                 time,
             };
         case 'Agent decided to skip':
-            return { tag: 'HOLD', text: out.rationale ? String(out.rationale).slice(0, 160) : 'No suitable listings found. Will retry next cycle.', time };
+            return { icon: 'pause', tone: 'hold', title: 'No Action Taken', body: out.rationale ? String(out.rationale) : 'No suitable listings this cycle', time };
         case 'Proposed for buyer approval (above auto-approve threshold)':
             return {
-                tag: 'ALERT',
-                text: `€${Number(out.total_cost_eur || 0).toFixed(2)} exceeds auto-approve limit (€${Number(out.auto_approve_under_eur || 0).toFixed(0)}). Awaiting your decision.`,
-                detail: out.rationale ? String(out.rationale).slice(0, 180) : undefined,
+                icon: 'shield', tone: 'warning', title: 'Your Decision Needed',
+                body: `€${Number(out.total_cost_eur || 0).toFixed(2)} exceeds auto-limit (€${Number(out.auto_approve_under_eur || 0).toFixed(0)})`,
+                detail: out.rationale ? String(out.rationale) : undefined,
                 time,
             };
         case 'Created order and executed payment':
             return {
-                tag: 'PAY',
-                text: `Order executed — ${out.quantity_tonnes || '?'}t purchased for €${Number(out.total_eur || 0).toFixed(2)}.`,
+                icon: 'handcoins', tone: 'payment', title: 'Purchase Complete',
+                body: `${out.quantity_tonnes || '?'}t · €${Number(out.total_eur || 0).toFixed(2)}`,
                 detail: out.payment_mode === 'stripe_agent_toolkit'
-                    ? 'Stripe Payment Link created — awaiting buyer checkout'
+                    ? 'Payment Link created'
                     : out.payment_mode === 'stripe'
-                    ? `Stripe payment confirmed · ${out.payment_intent_id}`
+                    ? `Stripe · ${out.payment_intent_id}`
                     : out.payment_mode === 'mock'
-                    ? 'Mock payment (Stripe not configured)'
+                    ? 'Mock payment'
                     : undefined,
                 time,
             };
         case 'Agent run completed successfully':
             return {
-                tag: 'DONE',
-                text: out.rationale ? String(out.rationale).slice(0, 160) : 'Agent run completed successfully.',
+                icon: 'done', tone: 'success', title: 'Cycle Complete',
+                body: out.rationale ? String(out.rationale) : 'Agent finished successfully',
                 detail: [
                     ...(out.key_strengths?.length ? [`Strengths: ${out.key_strengths.join(', ')}`] : []),
                     ...(out.risks?.length ? [`Risks: ${out.risks.join(', ')}`] : []),
@@ -145,20 +148,55 @@ function traceToStream(step: TraceStep, triggeredAt: string | null): StreamMessa
                 time,
             };
         default:
-            return { tag: 'SCAN', text: step.label, time };
+            return { icon: 'clock', tone: 'neutral', title: step.label, time };
     }
 }
 
-function getTagStyle(tag: StreamTag): string {
-    switch (tag) {
-        case 'SCAN': return 'text-linen/50 bg-linen/8';
-        case 'MATCH': return 'text-emerald-300 bg-emerald-500/15';
-        case 'ALERT': return 'text-amber-300 bg-amber-500/15';
-        case 'HOLD': return 'text-ember bg-ember/10';
-        case 'BUY': return 'text-emerald-300 bg-emerald-500/20';
-        case 'PAY': return 'text-violet-300 bg-violet-500/15';
-        case 'DONE': return 'text-sage bg-sage/15';
-        default: return 'text-linen/40 bg-linen/5';
+const ICON_MAP: Record<StreamIcon, React.ComponentType<{ size?: number; strokeWidth?: number; className?: string }>> = {
+    scan: ScanEye,
+    dollar: CircleDollarSign,
+    brain: BrainCircuit,
+    target: Target,
+    leaf: Leaf,
+    pause: PauseCircle,
+    shield: ShieldCheck,
+    handcoins: HandCoins,
+    done: CircleCheck,
+    clock: Clock,
+};
+
+/* ── Expandable text for long AI responses ─────────────────────── */
+function ExpandableText({ text, className, threshold = 200 }: { text: string; className?: string; threshold?: number }) {
+    const [expanded, setExpanded] = useState(false);
+    const isLong = text.length > threshold;
+
+    return (
+        <div className={className}>
+            <p className={`leading-relaxed ${!expanded && isLong ? 'line-clamp-3' : ''}`}>
+                {text}
+            </p>
+            {isLong && (
+                <button
+                    onClick={() => setExpanded(!expanded)}
+                    className="flex items-center gap-1 mt-1.5 font-sans text-[10px] font-medium text-linen/40 hover:text-linen/60 transition-colors cursor-pointer"
+                >
+                    <ChevronDown size={10} className={`transition-transform duration-300 ${expanded ? 'rotate-180' : ''}`} />
+                    {expanded ? 'Show less' : 'Read more'}
+                </button>
+            )}
+        </div>
+    );
+}
+
+function toneStyles(tone: StreamTone) {
+    switch (tone) {
+        case 'success': return { iconBg: 'bg-emerald-500/15', iconText: 'text-emerald-400', border: 'border-emerald-500/10' };
+        case 'warning': return { iconBg: 'bg-amber-500/15', iconText: 'text-amber-400', border: 'border-amber-500/10' };
+        case 'hold': return { iconBg: 'bg-ember/10', iconText: 'text-ember', border: 'border-ember/10' };
+        case 'info': return { iconBg: 'bg-sky-500/15', iconText: 'text-sky-400', border: 'border-sky-500/10' };
+        case 'payment': return { iconBg: 'bg-violet-500/15', iconText: 'text-violet-400', border: 'border-violet-500/10' };
+        case 'neutral':
+        default: return { iconBg: 'bg-linen/8', iconText: 'text-linen/50', border: 'border-linen/5' };
     }
 }
 
@@ -270,6 +308,8 @@ export function AgentActivityPanel() {
 
     const isRunning = runDetail?.status === 'running';
     const prevRunCountRef = useRef<number>(0);
+    const feedRef = useRef<HTMLDivElement>(null);
+    const prevCardCountRef = useRef<number>(0);
 
     // Auto-select first run
     useEffect(() => {
@@ -307,11 +347,43 @@ export function AgentActivityPanel() {
         return () => ctx.revert();
     }, []);
 
+    // GSAP stagger animation for stream cards
+    const animateStreamCards = useCallback(() => {
+        if (!feedRef.current) return;
+        const cards = feedRef.current.querySelectorAll('.stream-card');
+        if (!cards.length) return;
+
+        // Only animate new cards (cards beyond prevCardCountRef)
+        const newCards = Array.from(cards).slice(0, cards.length - prevCardCountRef.current);
+        if (newCards.length === 0 && prevCardCountRef.current > 0) return;
+
+        const targets = newCards.length > 0 ? newCards : Array.from(cards);
+
+        gsap.fromTo(targets,
+            { y: 24, opacity: 0, scale: 0.97 },
+            {
+                y: 0, opacity: 1, scale: 1,
+                duration: 0.5, stagger: 0.08,
+                ease: "back.out(1.4)",
+                clearProps: "transform",
+            }
+        );
+    }, []);
+
     // Derive data
-    const streamMessages: StreamMessage[] = runDetail?.trace_steps
-        ? [...runDetail.trace_steps].map(s => traceToStream(s, runDetail.triggered_at)).reverse()
+    const streamCards: StreamCard[] = runDetail?.trace_steps
+        ? [...runDetail.trace_steps].map(s => traceToCard(s, runDetail.triggered_at)).reverse()
         : [];
     const listingCards = runDetail?.trace_steps ? extractListingCards(runDetail.trace_steps) : [];
+
+    // Trigger animation when card count changes
+    useEffect(() => {
+        if (streamCards.length > 0 && streamCards.length !== prevCardCountRef.current) {
+            // Small delay for DOM to render new cards
+            requestAnimationFrame(() => animateStreamCards());
+        }
+        prevCardCountRef.current = streamCards.length;
+    }, [streamCards.length, animateStreamCards]);
 
     const handleTrigger = () => {
         triggerMutation.mutate(undefined, {
@@ -420,9 +492,9 @@ export function AgentActivityPanel() {
                             </div>
 
                             {/* Feed body */}
-                            <div className="flex-1 px-6 py-5 overflow-y-auto max-h-[380px]">
+                            <div className="flex-1 px-5 py-5 overflow-y-auto max-h-[380px]">
                                 {/* Thinking spinner while running with no steps */}
-                                {isRunning && streamMessages.length === 0 && (
+                                {isRunning && streamCards.length === 0 && (
                                     <div className="flex flex-col items-center justify-center py-12 gap-5">
                                         <div className="relative w-20 h-20">
                                             <div className="absolute inset-0 border border-linen/10 rounded-full animate-spin" style={{ animationDuration: '12s' }} />
@@ -436,43 +508,52 @@ export function AgentActivityPanel() {
                                     </div>
                                 )}
 
-                                {/* Stream messages */}
-                                {streamMessages.length > 0 && (
-                                    <div className="flex flex-col gap-4">
-                                        {streamMessages.map((msg, i) => (
-                                            <div
-                                                key={`${msg.time}-${i}`}
-                                                className="flex flex-col text-sm font-mono animate-in slide-in-from-top-2 fade-in duration-500 ease-out"
-                                                style={{ opacity: Math.max(0.25, 1 - (i * 0.12)) }}
-                                            >
-                                                <div className="flex items-center gap-2 mb-1">
-                                                    <span className="text-[10px] text-linen/30">{msg.time}</span>
-                                                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-[4px] uppercase ${getTagStyle(msg.tag)}`}>
-                                                        {msg.tag}
-                                                    </span>
+                                {/* Stream cards */}
+                                {streamCards.length > 0 && (
+                                    <div ref={feedRef} className="flex flex-col gap-3">
+                                        {streamCards.map((card, i) => {
+                                            const styles = toneStyles(card.tone);
+                                            const Icon = ICON_MAP[card.icon];
+                                            return (
+                                                <div
+                                                    key={`${card.time}-${i}`}
+                                                    className={`stream-card flex gap-3 p-3.5 rounded-xl border backdrop-blur-sm bg-linen/[0.03] ${styles.border}`}
+                                                    style={{ opacity: 0 }}
+                                                >
+                                                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${styles.iconBg}`}>
+                                                        <Icon size={15} strokeWidth={2} className={styles.iconText} />
+                                                    </div>
+                                                    <div className="flex-1 min-w-0">
+                                                        <div className="flex items-center justify-between gap-2 mb-0.5">
+                                                            <span className="font-sans font-medium text-sm text-linen/90 truncate">{card.title}</span>
+                                                            <span className="font-mono text-[10px] text-linen/25 shrink-0">{card.time}</span>
+                                                        </div>
+                                                        {card.body && (
+                                                            <ExpandableText text={card.body} className="font-sans text-xs text-linen/55" />
+                                                        )}
+                                                        {card.detail && (
+                                                            <ExpandableText text={card.detail} className="font-mono text-[10px] text-linen/30 mt-1.5" />
+                                                        )}
+                                                    </div>
                                                 </div>
-                                                <p className="text-xs leading-relaxed text-linen/75">{msg.text}</p>
-                                                {msg.detail && (
-                                                    <p className="text-[11px] leading-relaxed text-linen/40 mt-1 pl-2 border-l border-linen/10">{msg.detail}</p>
-                                                )}
-                                            </div>
-                                        ))}
+                                            );
+                                        })}
 
                                         {isRunning && (
-                                            <div className="flex items-center gap-2 pt-1">
+                                            <div className="flex items-center gap-2 pt-2 px-3">
                                                 <div className="flex items-center gap-1">
                                                     <div className="w-1.5 h-1.5 rounded-full bg-ember/50 animate-bounce" style={{ animationDelay: '0ms', animationDuration: '1.4s' }} />
                                                     <div className="w-1.5 h-1.5 rounded-full bg-ember/50 animate-bounce" style={{ animationDelay: '200ms', animationDuration: '1.4s' }} />
                                                     <div className="w-1.5 h-1.5 rounded-full bg-ember/50 animate-bounce" style={{ animationDelay: '400ms', animationDuration: '1.4s' }} />
                                                 </div>
-                                                <span className="font-mono text-[10px] text-linen/20">Processing...</span>
+                                                <span className="font-mono text-[10px] text-linen/20">Processing next step...</span>
                                             </div>
                                         )}
                                     </div>
                                 )}
 
                                 {/* No run selected */}
-                                {!isRunning && streamMessages.length === 0 && (
+                                {!isRunning && streamCards.length === 0 && (
                                     <div className="flex items-center justify-center py-12">
                                         <div className="font-mono text-sm text-linen/15 text-center">
                                             Waiting for next run...
@@ -535,7 +616,7 @@ export function AgentActivityPanel() {
                                             <span className="inline-block w-2 h-4 bg-ember align-middle ml-1 animate-pulse" />
                                         </>
                                     ) : runDetail.selection_rationale ? (
-                                        runDetail.selection_rationale.slice(0, 160) + (runDetail.selection_rationale.length > 160 ? '...' : '')
+                                        <ExpandableText text={runDetail.selection_rationale} className="font-mono text-sm text-linen/90" threshold={160} />
                                     ) : runDetail.status === 'failed' ? (
                                         <span className="text-red-300/60">Run encountered an error.</span>
                                     ) : (

@@ -1,6 +1,7 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
+import { Building2, ScanEye, BrainCircuit, BarChart3, Lightbulb, CircleCheck, Clock, ChevronDown } from 'lucide-react';
 import { useAgentRuns, useAgentRunDetail, useSellerAdvisoryTrigger } from '../../modules/shared/queries/useAgentRuns';
 import type { AgentRunSummary, TraceStep } from '@clients/api/agent';
 
@@ -8,16 +9,20 @@ gsap.registerPlugin(ScrollTrigger);
 
 const NOISE_BG = "url(\"data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E\")";
 
-/* ── Transform trace steps into friendly stream messages ──────── */
-type StreamTag = 'SCAN' | 'INSIGHT' | 'ALERT' | 'REC' | 'DONE';
+/* ── Transform trace steps into friendly stream cards ──────── */
+type StreamIcon = 'building' | 'scan' | 'brain' | 'chart' | 'lightbulb' | 'done' | 'clock';
+type StreamTone = 'neutral' | 'success' | 'info' | 'recommendation' | 'hold';
 
-interface StreamMessage {
-    tag: StreamTag;
-    text: string;
+interface StreamCard {
+    icon: StreamIcon;
+    tone: StreamTone;
+    title: string;
+    body?: string;
+    detail?: string;
     time: string;
 }
 
-function traceToStream(step: TraceStep, triggeredAt: string | null): StreamMessage {
+function traceToCard(step: TraceStep, triggeredAt: string | null): StreamCard {
     const base = triggeredAt ? new Date(triggeredAt) : new Date();
     const offset = step.duration_ms || 0;
     const t = new Date(base.getTime() + offset);
@@ -27,39 +32,76 @@ function traceToStream(step: TraceStep, triggeredAt: string | null): StreamMessa
 
     switch (step.label) {
         case 'Agent run initialized':
-            return { tag: 'SCAN', text: 'Advisory agent triggered. Analyzing your portfolio...', time };
+            return { icon: 'scan', tone: 'neutral', title: 'Portfolio Scan', body: 'Reviewing your listings and market position', time };
         case 'Loaded seller profile':
-            return { tag: 'SCAN', text: `Profile loaded for ${out.company || 'your organization'}. Scanning listings...`, time };
+            return { icon: 'building', tone: 'info', title: out.company || 'Profile Loaded', body: 'Scanning active listings for optimization', time };
         case 'Starting Gemini listing analysis':
-            return { tag: 'SCAN', text: 'Cross-referencing your listings against OffsetsDB market data via AI...', time };
+            return { icon: 'brain', tone: 'info', title: 'AI Market Comparison', body: 'Benchmarking against OffsetsDB data', time };
         case 'Gemini analysis complete':
             return {
-                tag: 'INSIGHT',
-                text: `Analysis complete. Market position: ${out.market_position || 'assessed'}. ${out.recommendation_count || 0} recommendations generated.`,
+                icon: 'chart', tone: 'info', title: 'Market Position Assessed',
+                body: out.market_position ? `Position: ${out.market_position}` : 'Analysis complete',
+                detail: out.recommendation_count ? `${out.recommendation_count} optimization${out.recommendation_count > 1 ? 's' : ''} identified` : undefined,
                 time,
             };
         case 'Advisory recommendations generated':
             if (Array.isArray(out.recommendations) && out.recommendations.length > 0) {
-                const first = out.recommendations[0];
-                return { tag: 'REC', text: `${first.summary || 'Recommendation available'}`, time };
+                return { icon: 'lightbulb', tone: 'recommendation', title: `${out.recommendations.length} Optimizations`, body: out.recommendations[0].summary || 'Actionable tips ready', time };
             }
-            return { tag: 'REC', text: 'Recommendations generated for your listings.', time };
+            return { icon: 'lightbulb', tone: 'recommendation', title: 'Tips Generated', body: 'Listing optimization strategies ready', time };
         case 'Advisory complete':
-            return { tag: 'DONE', text: out.overall_assessment ? String(out.overall_assessment).slice(0, 140) : 'Advisory complete.', time };
+            return {
+                icon: 'done', tone: 'success', title: 'Advisory Finished',
+                body: out.overall_assessment ? String(out.overall_assessment) : 'All recommendations delivered',
+                time,
+            };
         default:
-            return { tag: 'SCAN', text: step.label, time };
+            return { icon: 'clock', tone: 'neutral', title: step.label, time };
     }
 }
 
-function getTagStyle(tag: StreamTag): string {
-    switch (tag) {
-        case 'SCAN': return 'text-linen/50 bg-linen/8';
-        case 'INSIGHT': return 'text-sky-300 bg-sky-500/15';
-        case 'ALERT': return 'text-amber-300 bg-amber-500/15';
-        case 'REC': return 'text-emerald-300 bg-emerald-500/15';
-        case 'DONE': return 'text-sage bg-sage/15';
-        default: return 'text-linen/40 bg-linen/5';
+const SELLER_ICON_MAP: Record<StreamIcon, React.ComponentType<{ size?: number; strokeWidth?: number; className?: string }>> = {
+    building: Building2,
+    scan: ScanEye,
+    brain: BrainCircuit,
+    chart: BarChart3,
+    lightbulb: Lightbulb,
+    done: CircleCheck,
+    clock: Clock,
+};
+
+function toneStyling(tone: StreamTone) {
+    switch (tone) {
+        case 'success': return { iconBg: 'bg-emerald-500/15', iconText: 'text-emerald-400', border: 'border-emerald-500/10' };
+        case 'info': return { iconBg: 'bg-sky-500/15', iconText: 'text-sky-400', border: 'border-sky-500/10' };
+        case 'recommendation': return { iconBg: 'bg-amber-500/15', iconText: 'text-amber-300', border: 'border-amber-500/10' };
+        case 'hold': return { iconBg: 'bg-ember/10', iconText: 'text-ember', border: 'border-ember/10' };
+        case 'neutral':
+        default: return { iconBg: 'bg-linen/8', iconText: 'text-linen/50', border: 'border-linen/5' };
     }
+}
+
+/* ── Expandable text for long AI responses ─────────────────────── */
+function ExpandableText({ text, className, threshold = 200 }: { text: string; className?: string; threshold?: number }) {
+    const [expanded, setExpanded] = useState(false);
+    const isLong = text.length > threshold;
+
+    return (
+        <div className={className}>
+            <p className={`leading-relaxed ${!expanded && isLong ? 'line-clamp-3' : ''}`}>
+                {text}
+            </p>
+            {isLong && (
+                <button
+                    onClick={() => setExpanded(!expanded)}
+                    className="flex items-center gap-1 mt-1.5 font-sans text-[10px] font-medium text-linen/40 hover:text-linen/60 transition-colors cursor-pointer"
+                >
+                    <ChevronDown size={10} className={`transition-transform duration-300 ${expanded ? 'rotate-180' : ''}`} />
+                    {expanded ? 'Show less' : 'Read more'}
+                </button>
+            )}
+        </div>
+    );
 }
 
 /* ── Extract recommendations from trace steps ─────────────────── */
@@ -125,6 +167,8 @@ export function SellerAdvisoryPanel() {
     const triggerMutation = useSellerAdvisoryTrigger();
 
     const isRunning = runDetail?.status === 'running';
+    const feedRef = useRef<HTMLDivElement>(null);
+    const prevCardCountRef = useRef<number>(0);
 
     // Auto-select first run
     useEffect(() => {
@@ -147,11 +191,41 @@ export function SellerAdvisoryPanel() {
         return () => ctx.revert();
     }, []);
 
+    // GSAP stagger animation for stream cards
+    const animateStreamCards = useCallback(() => {
+        if (!feedRef.current) return;
+        const cards = feedRef.current.querySelectorAll('.seller-stream-card');
+        if (!cards.length) return;
+
+        const newCards = Array.from(cards).slice(0, cards.length - prevCardCountRef.current);
+        if (newCards.length === 0 && prevCardCountRef.current > 0) return;
+
+        const targets = newCards.length > 0 ? newCards : Array.from(cards);
+
+        gsap.fromTo(targets,
+            { y: 24, opacity: 0, scale: 0.97 },
+            {
+                y: 0, opacity: 1, scale: 1,
+                duration: 0.5, stagger: 0.08,
+                ease: "back.out(1.4)",
+                clearProps: "transform",
+            }
+        );
+    }, []);
+
     // Derive data
-    const streamMessages: StreamMessage[] = runDetail?.trace_steps
-        ? [...runDetail.trace_steps].map(s => traceToStream(s, runDetail.triggered_at)).reverse()
+    const streamCards: StreamCard[] = runDetail?.trace_steps
+        ? [...runDetail.trace_steps].map(s => traceToCard(s, runDetail.triggered_at)).reverse()
         : [];
     const recommendations = runDetail?.trace_steps ? extractRecommendations(runDetail.trace_steps) : [];
+
+    // Trigger animation when card count changes
+    useEffect(() => {
+        if (streamCards.length > 0 && streamCards.length !== prevCardCountRef.current) {
+            requestAnimationFrame(() => animateStreamCards());
+        }
+        prevCardCountRef.current = streamCards.length;
+    }, [streamCards.length, animateStreamCards]);
 
     const handleTrigger = () => {
         triggerMutation.mutate(undefined, {
@@ -255,9 +329,9 @@ export function SellerAdvisoryPanel() {
                             </div>
 
                             {/* Feed body */}
-                            <div className="flex-1 px-6 py-5 overflow-y-auto max-h-[380px]">
+                            <div className="flex-1 px-5 py-5 overflow-y-auto max-h-[380px]">
                                 {/* Thinking spinner while running */}
-                                {isRunning && streamMessages.length === 0 && (
+                                {isRunning && streamCards.length === 0 && (
                                     <div className="flex flex-col items-center justify-center py-12 gap-5">
                                         <div className="relative w-20 h-20">
                                             <div className="absolute inset-0 border border-linen/10 rounded-full animate-spin" style={{ animationDuration: '12s' }} />
@@ -271,27 +345,39 @@ export function SellerAdvisoryPanel() {
                                     </div>
                                 )}
 
-                                {/* Stream messages */}
-                                {streamMessages.length > 0 && (
-                                    <div className="flex flex-col gap-4">
-                                        {streamMessages.map((msg, i) => (
-                                            <div
-                                                key={`${msg.time}-${i}`}
-                                                className="flex flex-col text-sm font-mono animate-in slide-in-from-top-2 fade-in duration-500 ease-out"
-                                                style={{ opacity: Math.max(0.25, 1 - (i * 0.12)) }}
-                                            >
-                                                <div className="flex items-center gap-2 mb-1">
-                                                    <span className="text-[10px] text-linen/30">{msg.time}</span>
-                                                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-[4px] uppercase ${getTagStyle(msg.tag)}`}>
-                                                        {msg.tag}
-                                                    </span>
+                                {/* Stream cards */}
+                                {streamCards.length > 0 && (
+                                    <div ref={feedRef} className="flex flex-col gap-3">
+                                        {streamCards.map((card, i) => {
+                                            const styles = toneStyling(card.tone);
+                                            const Icon = SELLER_ICON_MAP[card.icon];
+                                            return (
+                                                <div
+                                                    key={`${card.time}-${i}`}
+                                                    className={`seller-stream-card flex gap-3 p-3.5 rounded-xl border backdrop-blur-sm bg-linen/[0.03] ${styles.border}`}
+                                                    style={{ opacity: 0 }}
+                                                >
+                                                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${styles.iconBg}`}>
+                                                        <Icon size={15} strokeWidth={2} className={styles.iconText} />
+                                                    </div>
+                                                    <div className="flex-1 min-w-0">
+                                                        <div className="flex items-center justify-between gap-2 mb-0.5">
+                                                            <span className="font-sans font-medium text-sm text-linen/90 truncate">{card.title}</span>
+                                                            <span className="font-mono text-[10px] text-linen/25 shrink-0">{card.time}</span>
+                                                        </div>
+                                                        {card.body && (
+                                                            <ExpandableText text={card.body} className="font-sans text-xs text-linen/55" />
+                                                        )}
+                                                        {card.detail && (
+                                                            <ExpandableText text={card.detail} className="font-mono text-[10px] text-linen/30 mt-1.5" />
+                                                        )}
+                                                    </div>
                                                 </div>
-                                                <p className="text-xs leading-relaxed text-linen/75">{msg.text}</p>
-                                            </div>
-                                        ))}
+                                            );
+                                        })}
 
                                         {isRunning && (
-                                            <div className="flex items-center gap-2 pt-1">
+                                            <div className="flex items-center gap-2 pt-2 px-3">
                                                 <div className="flex items-center gap-1">
                                                     <div className="w-1.5 h-1.5 rounded-full bg-sky-400/50 animate-bounce" style={{ animationDelay: '0ms', animationDuration: '1.4s' }} />
                                                     <div className="w-1.5 h-1.5 rounded-full bg-sky-400/50 animate-bounce" style={{ animationDelay: '200ms', animationDuration: '1.4s' }} />
@@ -304,7 +390,7 @@ export function SellerAdvisoryPanel() {
                                 )}
 
                                 {/* No run selected */}
-                                {!isRunning && streamMessages.length === 0 && (
+                                {!isRunning && streamCards.length === 0 && (
                                     <div className="flex items-center justify-center py-12">
                                         <div className="font-mono text-sm text-linen/15 text-center">
                                             Ready for analysis...
@@ -345,7 +431,7 @@ export function SellerAdvisoryPanel() {
                                                         )}
                                                     </div>
                                                     <p className="font-sans text-xs text-linen/80 leading-relaxed">{rec.summary}</p>
-                                                    <p className="font-mono text-[10px] text-linen/40 mt-2 leading-relaxed">{rec.details.slice(0, 120)}{rec.details.length > 120 ? '...' : ''}</p>
+                                                    <ExpandableText text={rec.details} className="font-mono text-[10px] text-linen/40 mt-2" threshold={150} />
                                                 </div>
                                             );
                                         })}
@@ -391,7 +477,7 @@ export function SellerAdvisoryPanel() {
                                             <span className="inline-block w-2 h-4 bg-sky-400 align-middle ml-1 animate-pulse" />
                                         </>
                                     ) : runDetail.selection_rationale ? (
-                                        runDetail.selection_rationale.slice(0, 160) + (runDetail.selection_rationale.length > 160 ? '...' : '')
+                                        <ExpandableText text={runDetail.selection_rationale} className="font-mono text-sm text-linen/90" threshold={160} />
                                     ) : runDetail.status === 'failed' ? (
                                         <span className="text-red-300/60">Advisory run encountered an error.</span>
                                     ) : (
