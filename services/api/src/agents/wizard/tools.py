@@ -138,6 +138,52 @@ PROJECT_DESCRIPTIONS: Dict[str, str] = {
 }
 
 
+# ── Listing search normalization ───────────────────────────────────────
+def _normalize_project_type(project_type: Optional[str]) -> Optional[str]:
+    """
+    Map free-form project-type text to listing enum values.
+    Returns None when the caller means "no strict type filter".
+    """
+    if not project_type:
+        return None
+
+    raw = project_type.strip().lower().replace("-", "_")
+    raw = " ".join(raw.split())
+    compact = raw.replace(" ", "_")
+
+    if compact in {"any", "all", "all_types", "all_projects", "no_preference", "none"}:
+        return None
+
+    aliases: Dict[str, str] = {
+        "afforestation": "afforestation",
+        "forest": "afforestation",
+        "forestry": "afforestation",
+        "reforestation": "afforestation",
+        "renewable": "renewable",
+        "renewables": "renewable",
+        "renewable_energy": "renewable",
+        "renewable_energy_projects": "renewable",
+        "clean_energy": "renewable",
+        "solar": "renewable",
+        "wind": "renewable",
+        "cookstoves": "cookstoves",
+        "cookstove": "cookstoves",
+        "clean_cookstoves": "cookstoves",
+        "methane_capture": "methane_capture",
+        "methane": "methane_capture",
+        "landfill_gas": "methane_capture",
+        "fuel_switching": "fuel_switching",
+        "fuel_switch": "fuel_switching",
+        "energy_efficiency": "energy_efficiency",
+        "efficiency": "energy_efficiency",
+        "agriculture": "agriculture",
+        "farming": "agriculture",
+        "other": "other",
+    }
+
+    return aliases.get(compact, aliases.get(raw))
+
+
 # ── Dependencies ──────────────────────────────────────────────────────
 
 
@@ -277,14 +323,27 @@ async def tool_search_listings(
     try:
         from models.operations.listings import listing_search
 
+        normalized_project_type = _normalize_project_type(project_type)
         results = await listing_search(
-            project_type=project_type,
+            project_type=normalized_project_type,
             project_country=project_country,
             max_price=max_price,
             min_quantity=min_quantity,
             vintage_year=vintage_year,
             limit=limit,
         )
+
+        # Fallback: if strict type filtering returned no matches, retry without
+        # type restriction so the wizard can still guide the buyer forward.
+        if not results and normalized_project_type:
+            results = await listing_search(
+                project_type=None,
+                project_country=project_country,
+                max_price=max_price,
+                min_quantity=min_quantity,
+                vintage_year=vintage_year,
+                limit=limit,
+            )
     except Exception as exc:
         logger.warning("tool_search_listings failed: %s", exc)
         return {"listings": [], "total": 0, "listings_found": False, "error": str(exc)}
