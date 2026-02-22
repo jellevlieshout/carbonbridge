@@ -17,6 +17,7 @@ export interface Order {
     stripe_client_secret: string | null;
     stripe_payment_link_url: string | null;
     retirement_requested: boolean;
+    retirement_reference: string | null;
 }
 
 export interface CreateOrderRequest {

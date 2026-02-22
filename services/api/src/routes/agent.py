@@ -306,6 +306,11 @@ async def route_agent_run_approve(
     order_status = "confirmed" if _stripe_configured() else "completed"
     await order_update_status(order.id, order_status)
 
+    # Auto-retire credits on the registry
+    if order_status == "completed":
+        from .orders import retire_order_credits
+        await retire_order_credits(order.id)
+
     # Record payment trace step so frontend can render the payment link
     await agent_run_append_step(run_id, TraceStep(
         step_index=len(run.data.trace_steps),
