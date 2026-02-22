@@ -10,6 +10,8 @@ interface WizardViewProps {
   messages: ConversationMessage[];
   streamingText: string;
   isStreaming: boolean;
+  hideStreamingState?: boolean;
+  disableInput?: boolean;
   currentIndex: number;
   totalSteps: number;
   stepLabel: string;
@@ -21,6 +23,8 @@ export function WizardView({
   messages,
   streamingText,
   isStreaming,
+  hideStreamingState = false,
+  disableInput = false,
   currentIndex,
   totalSteps,
   stepLabel,
@@ -51,11 +55,11 @@ export function WizardView({
             ),
           )}
           {/* Currently streaming agent response */}
-          {isStreaming && streamingText && (
+          {isStreaming && streamingText && !hideStreamingState && (
             <AgentMessage content={streamingText} isStreaming />
           )}
           {/* Streaming but no tokens yet */}
-          {isStreaming && !streamingText && (
+          {isStreaming && !streamingText && !hideStreamingState && (
             <AgentMessage content="" isStreaming />
           )}
         </div>
@@ -82,7 +86,7 @@ export function WizardView({
         )}
 
         {/* Input */}
-        <ChatInput onSend={onSend} disabled={isStreaming} />
+        <ChatInput onSend={onSend} disabled={isStreaming || disableInput} />
       </WizardCard>
     </div>
   );

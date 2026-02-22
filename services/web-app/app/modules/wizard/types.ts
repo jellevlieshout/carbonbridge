@@ -72,6 +72,13 @@ export interface SSESuggestionsEvent {
   suggestions: string[];
 }
 
+export interface SSECheckoutReadyEvent {
+  type: "checkout_ready";
+  order_id: string;
+  total_eur: number;
+  project_name: string;
+}
+
 export type SSEEvent =
   | SSETokenEvent
   | SSEStepChangeEvent
@@ -79,7 +86,8 @@ export type SSEEvent =
   | SSEErrorEvent
   | SSEBuyerHandoffEvent
   | SSEAutobuywaitlistEvent
-  | SSESuggestionsEvent;
+  | SSESuggestionsEvent
+  | SSECheckoutReadyEvent;
 
 // Visual step mapping — collapses 7 backend steps into 5 visual dots
 export const STEP_ORDER: WizardStep[] = [

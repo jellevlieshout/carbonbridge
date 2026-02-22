@@ -10,6 +10,7 @@ interface UseWizardSSEOptions {
   onBuyerHandoff?: (outcome: string, message: string) => void;
   onAutobuyWaitlist?: (optedIn: boolean) => void;
   onSuggestions?: (suggestions: string[]) => void;
+  onCheckoutReady?: (orderId: string, totalEur: number, projectName: string) => void;
 }
 
 async function fetchSSE(url: string, signal: AbortSignal): Promise<Response> {
@@ -63,6 +64,7 @@ export const useWizardSSE = ({
   onBuyerHandoff,
   onAutobuyWaitlist,
   onSuggestions,
+  onCheckoutReady,
 }: UseWizardSSEOptions) => {
   const [isStreaming, setIsStreaming] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
@@ -128,6 +130,9 @@ export const useWizardSSE = ({
                 case "suggestions":
                   onSuggestions?.(event.suggestions);
                   break;
+                case "checkout_ready":
+                  onCheckoutReady?.(event.order_id, event.total_eur, event.project_name);
+                  break;
               }
             } catch {
               // skip malformed JSON
@@ -142,7 +147,7 @@ export const useWizardSSE = ({
         abortRef.current = null;
       }
     },
-    [onToken, onStepChange, onDone, onError, onBuyerHandoff, onAutobuyWaitlist, onSuggestions, stopStream],
+    [onToken, onStepChange, onDone, onError, onBuyerHandoff, onAutobuyWaitlist, onSuggestions, onCheckoutReady, stopStream],
   );
 
   useEffect(() => {

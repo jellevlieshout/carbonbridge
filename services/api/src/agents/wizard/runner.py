@@ -63,6 +63,10 @@ def _buyer_handoff_event(outcome: str, message: str) -> Dict[str, Any]:
     return {"type": "buyer_handoff", "outcome": outcome, "message": message}
 
 
+def _checkout_ready_event(order_id: str, total_eur: float, project_name: str = "") -> Dict[str, Any]:
+    return {"type": "checkout_ready", "order_id": order_id, "total_eur": total_eur, "project_name": project_name}
+
+
 def _waitlist_event(opted_in: bool) -> Dict[str, Any]:
     return {"type": "autobuy_waitlist", "opted_in": opted_in}
 
@@ -221,6 +225,84 @@ async def _activate_autobuy_waitlist(
 
     except Exception as exc:
         logger.warning("Could not activate autobuy for buyer %s: %s", buyer_id, exc)
+        return None
+
+
+# ── Checkout preparation for confirmed direct purchases ───────────────
+
+
+async def _prepare_checkout(order_id: str) -> Optional[Dict[str, Any]]:
+    """
+    Create a Stripe PaymentIntent for an existing draft order.
+    Returns {order_id, total_eur, client_secret, project_name} or None on failure.
+    Falls back to a mock PaymentIntent when Stripe is not configured.
+    """
+    import hashlib
+
+    try:
+        from models.operations.orders import order_get, order_set_payment_intent
+
+        order = await order_get(order_id)
+        if not order:
+            logger.error("_prepare_checkout: order %s not found", order_id)
+            return None
+
+        total_eur = order.data.total_eur
+
+        # Derive project name from the first line item for display
+        project_name = ""
+        try:
+            from models.operations.listings import listing_get
+            first_listing_id = order.data.line_items[0].listing_id if order.data.line_items else None
+            if first_listing_id:
+                listing = await listing_get(first_listing_id)
+                if listing:
+                    project_name = listing.data.project_name
+        except Exception:
+            pass
+
+        # Skip if order already has a payment intent
+        if order.data.stripe_payment_intent_id:
+            client_secret = getattr(order.data, "stripe_client_secret", None)
+            return {
+                "order_id": order_id,
+                "total_eur": total_eur,
+                "client_secret": client_secret,
+                "project_name": project_name,
+            }
+
+        import os
+        stripe_key = os.environ.get("STRIPE_SECRET_KEY")
+
+        if stripe_key:
+            import stripe as _stripe
+            _stripe.api_key = stripe_key
+            intent = _stripe.PaymentIntent.create(
+                amount=int(total_eur * 100),
+                currency="eur",
+                metadata={"carbonbridge_order_id": order_id},
+            )
+            await order_set_payment_intent(order_id, intent.id)
+            return {
+                "order_id": order_id,
+                "total_eur": total_eur,
+                "client_secret": intent.client_secret,
+                "project_name": project_name,
+            }
+        else:
+            # Mock mode
+            mock_id = f"pi_mock_{hashlib.sha256(order_id.encode()).hexdigest()[:16]}"
+            await order_set_payment_intent(order_id, mock_id)
+            logger.info("Mock checkout: order %s intent %s", order_id, mock_id)
+            return {
+                "order_id": order_id,
+                "total_eur": total_eur,
+                "client_secret": f"mock_secret_{mock_id}",
+                "project_name": project_name,
+            }
+
+    except Exception as exc:
+        logger.error("_prepare_checkout failed for order %s: %s", order_id, exc, exc_info=True)
         return None
 
 
@@ -483,15 +565,47 @@ async def run_wizard_turn(
             session_id, original_step, exc,
         )
 
-    # 10. Post-turn side effects: buyer agent handoff or waitlist activation
+    # 10. Post-turn side effects: checkout for confirmed orders, or waitlist activation
     if graph_error or final_state is None:
         return
 
     handoff = final_state.get("handoff_to_buyer_agent", False)
     waitlist_opted_in = final_state.get("waitlist_opted_in", False)
+    draft_order_id = final_state.get("draft_order_id")
 
-    if handoff:
-        # Trigger buyer agent immediately and stream outcome
+    if handoff and draft_order_id:
+        # Direct purchase confirmed — create Stripe PaymentIntent and send checkout_ready
+        checkout = await _prepare_checkout(draft_order_id)
+        if checkout:
+            yield _checkout_ready_event(
+                checkout["order_id"],
+                checkout["total_eur"],
+                checkout.get("project_name", ""),
+            )
+            try:
+                await wizard_session_save_context(
+                    session_id,
+                    conversation_complete=True,
+                    buyer_agent_outcome="checkout_ready",
+                )
+            except Exception as exc:
+                logger.warning("Could not persist checkout_ready context: %s", exc)
+        else:
+            # Checkout preparation failed — emit a friendly error
+            error_msg = (
+                "Your order is saved but we hit a snag preparing the payment. "
+                "You can complete it from your dashboard under My Orders."
+            )
+            async for token in _stream_text(error_msg):
+                yield _token_event(token)
+            yield _done_event(error_msg)
+            try:
+                await wizard_session_add_message(session_id, "assistant", error_msg)
+            except Exception:
+                pass
+
+    elif handoff and not draft_order_id:
+        # Edge case: handoff without a draft order — run the autonomous buyer agent
         criteria = final_state.get("autobuy_criteria_snapshot") or {}
         if not criteria:
             prefs = final_state.get("extracted_preferences")
@@ -506,12 +620,11 @@ async def run_wizard_turn(
         handoff_result = await _trigger_buyer_agent(buyer_id, criteria)
         outcome_message = handoff_result.to_message()
 
-        yield _buyer_handoff_event(handoff_result.action, outcome_message)
-        yield _done_event(outcome_message)
-
-        # Stream outcome message tokens too for smooth UX
+        # Stream outcome tokens first, then done
         async for token in _stream_text(outcome_message):
             yield _token_event(token)
+        yield _buyer_handoff_event(handoff_result.action, outcome_message)
+        yield _done_event(outcome_message)
 
         try:
             await wizard_session_add_message(session_id, "assistant", outcome_message)
@@ -525,9 +638,11 @@ async def run_wizard_turn(
             logger.warning("Could not persist buyer handoff outcome: %s", exc)
 
     elif waitlist_opted_in:
+        # Notify UI immediately so it can transition without waiting for
+        # background activation calls.
+        yield _waitlist_event(opted_in=True)
         snapshot = final_state.get("autobuy_criteria_snapshot") or {}
         run_id = await _activate_autobuy_waitlist(buyer_id, snapshot)
-        yield _waitlist_event(opted_in=True)
         if run_id:
             try:
                 await wizard_session_save_context(

@@ -1,10 +1,12 @@
 import React, { useState, useCallback, useEffect, useRef } from "react";
-import { LoaderCircle, AlertTriangle, Sparkles, ArrowRight, Bot } from "lucide-react";
+import { useNavigate } from "react-router";
+import { LoaderCircle, AlertTriangle, Sparkles, ArrowRight, Bot, ShoppingCart, CheckCircle2 } from "lucide-react";
 import type { ConversationMessage, WizardStep } from "../types";
 import { useWizardSession } from "../hooks/useWizardSession";
 import { useWizardSendMessage } from "../hooks/useWizardSendMessage";
 import { useWizardSSE } from "../hooks/useWizardSSE";
 import { useWizardNavigation } from "../hooks/useWizardNavigation";
+import { useMockConfirmOrder } from "~/modules/shared/queries/useOrders";
 import { WizardView } from "../views/WizardView";
 
 interface WizardPresenterProps {
@@ -19,7 +21,11 @@ export function WizardPresenter({ onComplete }: WizardPresenterProps = {}) {
   const [streamingText, setStreamingText] = useState("");
   const [currentStep, setCurrentStep] = useState<WizardStep>("profile_check");
   const [isComplete, setIsComplete] = useState(false);
-  const [completionType, setCompletionType] = useState<"handoff" | "waitlist" | null>(null);
+  const [completionType, setCompletionType] = useState<"handoff" | "waitlist" | "checkout" | null>(null);
+  const [awaitingWaitlistAgreement, setAwaitingWaitlistAgreement] = useState(false);
+  const [checkoutOrderId, setCheckoutOrderId] = useState<string | null>(null);
+  const [checkoutTotalEur, setCheckoutTotalEur] = useState<number>(0);
+  const [checkoutProjectName, setCheckoutProjectName] = useState<string>("");
   const [suggestions, setSuggestions] = useState<string[]>([]);
 
   const autoStarted = useRef(false);
@@ -71,8 +77,20 @@ export function WizardPresenter({ onComplete }: WizardPresenterProps = {}) {
     onAutobuyWaitlist: useCallback(
       (_optedIn: boolean) => {
         isCompleteRef.current = true;
-        setIsComplete(true);
         setCompletionType("waitlist");
+        setSuggestions([]);
+        setAwaitingWaitlistAgreement(true);
+      },
+      [],
+    ),
+    onCheckoutReady: useCallback(
+      (orderId: string, totalEur: number, projectName: string) => {
+        isCompleteRef.current = true;
+        setCheckoutOrderId(orderId);
+        setCheckoutTotalEur(totalEur);
+        setCheckoutProjectName(projectName);
+        setCompletionType("checkout");
+        setIsComplete(true);
         setSuggestions([]);
       },
       [],
@@ -142,7 +160,15 @@ export function WizardPresenter({ onComplete }: WizardPresenterProps = {}) {
   }
 
   if (isComplete) {
-    return <WizardCompletionScreen type={completionType} onContinue={() => onComplete?.()} />;
+    return (
+      <WizardCompletionScreen
+        type={completionType}
+        checkoutOrderId={checkoutOrderId}
+        checkoutTotalEur={checkoutTotalEur}
+        checkoutProjectName={checkoutProjectName}
+        onContinue={() => onComplete?.()}
+      />
+    );
   }
 
   return (
@@ -151,17 +177,37 @@ export function WizardPresenter({ onComplete }: WizardPresenterProps = {}) {
         messages={messages}
         streamingText={streamingText}
         isStreaming={isStreaming}
+        hideStreamingState={awaitingWaitlistAgreement}
+        disableInput={awaitingWaitlistAgreement}
         currentIndex={currentIndex}
         totalSteps={totalSteps}
         stepLabel={label}
         suggestions={suggestions}
         onSend={handleSend}
       />
+      {awaitingWaitlistAgreement && (
+        <div className="mt-3 rounded-xl border border-canopy/20 bg-canopy/5 p-4 text-center">
+          <p className="text-sm text-slate/80">
+            Your autonomous agent is ready. Confirm to enter monitoring.
+          </p>
+          <button
+            onClick={() => {
+              setAwaitingWaitlistAgreement(false);
+              setIsComplete(true);
+            }}
+            className="mt-3 inline-flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-semibold bg-canopy text-linen hover:bg-canopy/90 transition-colors cursor-pointer border-0"
+          >
+            Agree and continue
+            <ArrowRight size={16} />
+          </button>
+        </div>
+      )}
       {onComplete && (
         <div className="flex justify-center mt-3">
           <button
             onClick={onComplete}
-            className="text-sm text-slate/30 hover:text-slate/50 transition-colors cursor-pointer bg-transparent border-0 underline underline-offset-2"
+            disabled={awaitingWaitlistAgreement}
+            className="text-sm text-slate/30 hover:text-slate/50 transition-colors cursor-pointer bg-transparent border-0 underline underline-offset-2 disabled:opacity-40 disabled:cursor-not-allowed"
           >
             Skip for now
           </button>
@@ -174,11 +220,100 @@ export function WizardPresenter({ onComplete }: WizardPresenterProps = {}) {
 // ── Completion/handoff screen ──────────────────────────────────────────────
 
 interface WizardCompletionScreenProps {
-  type: "handoff" | "waitlist" | null;
+  type: "handoff" | "waitlist" | "checkout" | null;
+  checkoutOrderId?: string | null;
+  checkoutTotalEur?: number;
+  checkoutProjectName?: string;
   onContinue: () => void;
 }
 
-function WizardCompletionScreen({ type, onContinue }: WizardCompletionScreenProps) {
+function WizardCompletionScreen({
+  type,
+  checkoutOrderId,
+  checkoutTotalEur,
+  checkoutProjectName,
+  onContinue,
+}: WizardCompletionScreenProps) {
+  const navigate = useNavigate();
+  const mockConfirm = useMockConfirmOrder();
+  const [paymentDone, setPaymentDone] = useState(false);
+  const [paymentLoading, setPaymentLoading] = useState(false);
+
+  if (type === "checkout" && checkoutOrderId) {
+    const handleSimulatePayment = () => {
+      setPaymentLoading(true);
+      mockConfirm.mutate(checkoutOrderId, {
+        onSuccess: () => {
+          setPaymentDone(true);
+          setPaymentLoading(false);
+        },
+        onError: () => setPaymentLoading(false),
+      });
+    };
+
+    if (paymentDone) {
+      return (
+        <div className="flex flex-col items-center justify-center gap-6 py-16 text-center">
+          <div className="w-16 h-16 rounded-full bg-canopy/10 flex items-center justify-center">
+            <CheckCircle2 size={28} className="text-canopy" />
+          </div>
+          <div className="space-y-2">
+            <h2 className="font-serif italic text-2xl text-slate">Payment confirmed!</h2>
+            <p className="text-sm text-slate/50 max-w-xs mx-auto leading-relaxed">
+              Your carbon offset purchase is complete. Your credits will appear in your portfolio shortly.
+            </p>
+          </div>
+          <button
+            onClick={() => navigate("/buyer/credits")}
+            className="flex items-center gap-2 px-6 py-3 rounded-full text-sm font-semibold bg-canopy text-linen hover:bg-canopy/90 transition-colors cursor-pointer border-0"
+          >
+            View My Credits
+            <ArrowRight size={16} />
+          </button>
+        </div>
+      );
+    }
+
+    return (
+      <div className="flex flex-col items-center justify-center gap-6 py-16 text-center">
+        <div className="w-16 h-16 rounded-full bg-canopy/10 flex items-center justify-center">
+          <ShoppingCart size={28} className="text-canopy" />
+        </div>
+        <div className="space-y-2">
+          <h2 className="font-serif italic text-2xl text-slate">Ready to purchase</h2>
+          {checkoutProjectName && (
+            <p className="text-base font-medium text-slate/80">{checkoutProjectName}</p>
+          )}
+          <p className="text-sm text-slate/50 max-w-xs mx-auto leading-relaxed">
+            Total: <span className="font-semibold text-slate">€{checkoutTotalEur?.toFixed(2)}</span>
+            <br />
+            Confirm to complete your carbon offset purchase.
+          </p>
+        </div>
+        <div className="flex flex-col items-center gap-3">
+          <button
+            onClick={handleSimulatePayment}
+            disabled={paymentLoading}
+            className="flex items-center gap-2 px-6 py-3 rounded-full text-sm font-semibold bg-canopy text-linen hover:bg-canopy/90 transition-colors cursor-pointer border-0 disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {paymentLoading ? (
+              <LoaderCircle size={16} className="animate-spin" />
+            ) : (
+              <CheckCircle2 size={16} />
+            )}
+            {paymentLoading ? "Processing…" : "Confirm Purchase"}
+          </button>
+          <button
+            onClick={() => navigate("/buyer/credits")}
+            className="text-sm text-slate/40 hover:text-slate/60 transition-colors cursor-pointer bg-transparent border-0 underline underline-offset-2"
+          >
+            View My Orders instead
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col items-center justify-center gap-6 py-16 text-center">
       <div className="w-16 h-16 rounded-full bg-canopy/10 flex items-center justify-center">
