@@ -7,6 +7,7 @@ import { Badge } from "~/modules/shared/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "~/modules/shared/ui/table";
 import { Leaf, Award, Clock, Shield, ExternalLink, Download, X } from "lucide-react";
 import { toast } from "sonner";
+import { generateCertificatePDF } from "~/components/buyer/CertificatePDF";
 import type { Route } from "./+types/buyer-credits";
 
 export function meta({ }: Route.MetaArgs) {
@@ -32,13 +33,30 @@ interface CertificateModalProps {
     projectName: string;
     quantity: number;
     totalEur: number;
+    retirementReference?: string | null;
     onClose: () => void;
 }
 
-function CertificateModal({ orderId, listingId, projectName, quantity, totalEur, onClose }: CertificateModalProps) {
-    const serial = deriveSerial(orderId, listingId);
-    const retirementDate = new Date(parseInt(orderId.substring(0, 8), 16) * 1000 || Date.now())
-        .toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" });
+function CertificateModal({ orderId, listingId, projectName, quantity, totalEur, retirementReference, onClose }: CertificateModalProps) {
+    const { data: listing } = useListingQuery(listingId);
+    const serial = listing?.serial_number_range || deriveSerial(orderId, listingId);
+    const retirementDate = new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" });
+
+    const handleDownloadPDF = () => {
+        generateCertificatePDF({
+            orderId,
+            projectName,
+            projectCountry: listing?.project_country,
+            registryName: listing?.registry_name,
+            vintageYear: listing?.vintage_year,
+            methodology: listing?.methodology,
+            quantity,
+            totalEur,
+            serialNumber: serial,
+            retirementDate,
+            retirementReference,
+        });
+    };
 
     return (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
@@ -82,6 +100,12 @@ function CertificateModal({ orderId, listingId, projectName, quantity, totalEur,
                             <p className="text-[10px] text-slate/40 uppercase tracking-wider font-medium mb-0.5">Serial Number</p>
                             <p className="text-xs font-mono bg-mist/40 px-3 py-1.5 rounded-lg text-slate/70 break-all">{serial}</p>
                         </div>
+                        {retirementReference && (
+                            <div>
+                                <p className="text-[10px] text-slate/40 uppercase tracking-wider font-medium mb-0.5">Retirement Reference</p>
+                                <p className="text-xs font-mono bg-green-50 text-green-700 px-3 py-1.5 rounded-lg">{retirementReference}</p>
+                            </div>
+                        )}
                         <div>
                             <p className="text-[10px] text-slate/40 uppercase tracking-wider font-medium mb-0.5">Order Reference</p>
                             <p className="text-xs font-mono text-slate/50">{orderId}</p>
@@ -107,7 +131,7 @@ function CertificateModal({ orderId, listingId, projectName, quantity, totalEur,
                                 Verify on Verra Registry
                             </a>
                             <span className="text-slate/20">·</span>
-                            <button className="flex items-center gap-1.5 text-xs text-slate/50 hover:text-canopy transition-colors cursor-pointer bg-transparent border-0">
+                            <button onClick={handleDownloadPDF} className="flex items-center gap-1.5 text-xs text-slate/50 hover:text-canopy transition-colors cursor-pointer bg-transparent border-0">
                                 <Download size={11} />
                                 Download PDF
                             </button>
@@ -138,18 +162,49 @@ interface CertTriggerProps {
     listingId: string;
     quantity: number;
     totalEur: number;
-    onOpen: (cert: { orderId: string; listingId: string; projectName: string; quantity: number; totalEur: number }) => void;
+    retirementReference?: string | null;
+    onOpen: (cert: { orderId: string; listingId: string; projectName: string; quantity: number; totalEur: number; retirementReference?: string | null }) => void;
 }
 
-function CertificateTrigger({ orderId, listingId, quantity, totalEur, onOpen }: CertTriggerProps) {
+function CertificateTrigger({ orderId, listingId, quantity, totalEur, retirementReference, onOpen }: CertTriggerProps) {
     const { data: listing } = useListingQuery(listingId);
     return (
         <button
-            onClick={() => onOpen({ orderId, listingId, projectName: listing?.project_name ?? "Project", quantity, totalEur })}
+            onClick={() => onOpen({ orderId, listingId, projectName: listing?.project_name ?? "Project", quantity, totalEur, retirementReference })}
             className="flex items-center gap-1 text-xs text-muted-foreground hover:text-primary transition-colors cursor-pointer bg-transparent border border-border rounded-md px-2 py-1 whitespace-nowrap"
         >
             <Award className="w-3 h-3" />
             Certificate
+        </button>
+    );
+}
+
+function DownloadPDFButton({ orderId, listingId, quantity, totalEur, retirementReference }: {
+    orderId: string; listingId: string; quantity: number; totalEur: number; retirementReference?: string | null;
+}) {
+    const { data: listing } = useListingQuery(listingId);
+    const serial = listing?.serial_number_range || deriveSerial(orderId, listingId);
+    const retirementDate = new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" });
+
+    return (
+        <button
+            onClick={() => generateCertificatePDF({
+                orderId,
+                projectName: listing?.project_name ?? "Carbon Credit Project",
+                projectCountry: listing?.project_country,
+                registryName: listing?.registry_name,
+                vintageYear: listing?.vintage_year,
+                methodology: listing?.methodology,
+                quantity,
+                totalEur,
+                serialNumber: serial,
+                retirementDate,
+                retirementReference,
+            })}
+            title="Download PDF Certificate"
+            className="flex items-center justify-center w-7 h-7 text-muted-foreground hover:text-primary transition-colors cursor-pointer bg-transparent border border-border rounded-md"
+        >
+            <Download className="w-3.5 h-3.5" />
         </button>
     );
 }
@@ -159,7 +214,7 @@ export default function BuyerCreditsPage() {
     const confirmPayment = useConfirmPayment();
     const confirmedRef = useRef(false);
     const { data: orders, isLoading, isError, error } = useOrders();
-    const [activeCert, setActiveCert] = useState<{ orderId: string; listingId: string; projectName: string; quantity: number; totalEur: number } | null>(null);
+    const [activeCert, setActiveCert] = useState<{ orderId: string; listingId: string; projectName: string; quantity: number; totalEur: number; retirementReference?: string | null } | null>(null);
 
     useEffect(() => {
         const paymentIntentId = searchParams.get("payment_intent");
@@ -207,6 +262,7 @@ export default function BuyerCreditsPage() {
                     projectName={activeCert.projectName}
                     quantity={activeCert.quantity}
                     totalEur={activeCert.totalEur}
+                    retirementReference={activeCert.retirementReference}
                     onClose={() => setActiveCert(null)}
                 />
             )}
@@ -297,15 +353,23 @@ export default function BuyerCreditsPage() {
                                                         ) : <span className="text-muted-foreground">in total</span>}
                                                     </TableCell>
                                                     <TableCell>
-                                                        {order.status === 'completed' && (
+                                                        <div className="flex items-center gap-1.5">
                                                             <CertificateTrigger
                                                                 orderId={order.id}
                                                                 listingId={item.listing_id}
                                                                 quantity={item.quantity}
                                                                 totalEur={order.total_eur}
+                                                                retirementReference={order.retirement_reference}
                                                                 onOpen={setActiveCert}
                                                             />
-                                                        )}
+                                                            <DownloadPDFButton
+                                                                orderId={order.id}
+                                                                listingId={item.listing_id}
+                                                                quantity={item.quantity}
+                                                                totalEur={order.total_eur}
+                                                                retirementReference={order.retirement_reference}
+                                                            />
+                                                        </div>
                                                     </TableCell>
                                                 </TableRow>
                                             );

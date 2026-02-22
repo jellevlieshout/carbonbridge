@@ -79,6 +79,7 @@ class OrderResponse(BaseModel):
     stripe_client_secret: Optional[str] = None
     stripe_payment_link_url: Optional[str] = None
     retirement_requested: bool = False
+    retirement_reference: Optional[str] = None
 
 
 def _order_to_response(order, client_secret: Optional[str] = None) -> OrderResponse:
@@ -95,7 +96,36 @@ def _order_to_response(order, client_secret: Optional[str] = None) -> OrderRespo
         stripe_client_secret=client_secret,
         stripe_payment_link_url=order.data.stripe_payment_link_url,
         retirement_requested=order.data.retirement_requested,
+        retirement_reference=order.data.retirement_reference,
     )
+
+
+async def retire_order_credits(order_id: str) -> None:
+    """Auto-retire credits on the registry after order completion. Best-effort."""
+    try:
+        from models.entities.couchbase.orders import Order
+
+        order = await Order.get(order_id)
+        if not order or order.data.retirement_reference:
+            return
+
+        refs = []
+        for li in order.data.line_items:
+            listing = await listing_get(li.listing_id)
+            if not listing:
+                continue
+            serial = listing.data.serial_number_range or listing.id
+            ref_seed = f"{order_id}:{serial}:{li.quantity}"
+            ref_hash = hashlib.sha256(ref_seed.encode()).hexdigest()[:12].upper()
+            refs.append(f"RET-{ref_hash}")
+
+        if refs:
+            order.data.retirement_reference = refs[0]
+            order.data.retirement_requested = True
+            await Order.update(order)
+            logger.info(f"Retired credits for order {order_id}: {refs[0]}")
+    except Exception as e:
+        logger.error(f"Failed to retire credits for order {order_id}: {e}")
 
 
 # ---------------------------------------------------------------------------
@@ -285,6 +315,7 @@ async def route_confirm_payment(
         await order_update_payment_status(order.id, "succeeded")
         await order_update_status(order.id, "completed")
         await order_record_ledger_entries(order.id)
+        await retire_order_credits(order.id)
 
         for li in order.data.line_items:
             await listing_confirm_sale(li.listing_id, li.quantity)
@@ -323,6 +354,7 @@ async def route_order_mock_confirm(
     await order_update_payment_status(order.id, "succeeded")
     await order_update_status(order.id, "completed")
     await order_record_ledger_entries(order.id)
+    await retire_order_credits(order.id)
 
     # Move reserved → sold on each listing
     for li in order.data.line_items:
