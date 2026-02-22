@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from utils import env, log
 
 from models.entities.couchbase.orders import OrderLineItem
-from models.operations.listings import listing_get, listing_search, listing_update
+from models.operations.listings import listing_get, listing_search
 from models.operations.orders import (
     order_create,
     order_get,
@@ -355,23 +355,9 @@ async def internal_create_order_draft(
                 detail=f"Listing {item.listing_id} is not active (status: {listing.data.status})",
             )
 
-        available = (
-            listing.data.quantity_tonnes
-            - listing.data.quantity_reserved
-            - listing.data.quantity_sold
-        )
-        if item.quantity > available:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Listing {item.listing_id}: requested {item.quantity}t but only {available}t available",
-            )
-
-        reserved = await listing_reserve_quantity(item.listing_id, item.quantity)
+        reserved, err = await listing_reserve_quantity(item.listing_id, item.quantity)
         if not reserved:
-            raise HTTPException(
-                status_code=409,
-                detail=f"Could not reserve {item.quantity}t on listing {item.listing_id}",
-            )
+            raise HTTPException(status_code=409, detail=err)
 
         subtotal = round(item.quantity * listing.data.price_per_tonne_eur, 2)
         total_eur += subtotal
@@ -423,14 +409,9 @@ async def internal_execute_payment(
     await order_record_ledger_entries(order_id)
 
     # Move reserved → sold on each listing
+    from models.operations.listings import listing_confirm_sale
     for li in order.data.line_items:
-        listing = await listing_get(li.listing_id)
-        if listing:
-            listing.data.quantity_reserved -= li.quantity
-            listing.data.quantity_sold += li.quantity
-            if listing.data.quantity_sold >= listing.data.quantity_tonnes:
-                listing.data.status = "sold_out"
-            await listing_update(listing)
+        await listing_confirm_sale(li.listing_id, li.quantity)
 
     logger.info(f"Order {order_id} completed via internal pay")
 

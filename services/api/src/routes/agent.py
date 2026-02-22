@@ -28,7 +28,7 @@ from models.operations.agent_runs import (
     agent_run_get,
     agent_run_get_by_owner,
 )
-from models.operations.listings import listing_get, listing_reserve_quantity
+from models.operations.listings import listing_get, listing_release_reservation, listing_reserve_quantity
 from models.operations.orders import (
     order_create,
     order_set_payment_intent,
@@ -234,12 +234,9 @@ async def route_agent_run_approve(
     total_cost = round(quantity * price_per_tonne, 2)
 
     # Reserve and create order
-    reserved = await listing_reserve_quantity(listing.id, quantity)
+    reserved, err = await listing_reserve_quantity(listing.id, quantity)
     if not reserved:
-        raise HTTPException(
-            status_code=409,
-            detail=f"Could not reserve {quantity}t on listing {listing.id}",
-        )
+        raise HTTPException(status_code=409, detail=err)
 
     line_items = [
         OrderLineItem(

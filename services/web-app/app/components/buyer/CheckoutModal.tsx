@@ -5,11 +5,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Button } from "~/modules/shared/ui/button";
 import { Input } from "~/modules/shared/ui/input";
 import { Label } from "~/modules/shared/ui/label";
-import { useCreateOrder, useCancelOrder } from "~/modules/shared/queries/useOrders";
+import { useCreateOrder, useCancelOrder, useMockConfirmOrder } from "~/modules/shared/queries/useOrders";
 import { CheckoutForm } from "./CheckoutForm";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useNavigate } from "react-router";
+import { useQueryClient } from "@tanstack/react-query";
 
 // It's best to initialize stripe outside the component render
 // We'll require the public key to be available via Vite env vars
@@ -33,12 +34,15 @@ export function CheckoutModal({
     availableTonnes
 }: CheckoutModalProps) {
     const navigate = useNavigate();
+    const queryClient = useQueryClient();
     const [quantity, setQuantity] = useState<number>(1);
     const [clientSecret, setClientSecret] = useState<string | null>(null);
     const [orderId, setOrderId] = useState<string | null>(null);
+    const [isMockMode, setIsMockMode] = useState(false);
 
     const createOrderMutation = useCreateOrder();
     const cancelOrderMutation = useCancelOrder();
+    const mockConfirmMutation = useMockConfirmOrder();
 
     // Reset state when modal opens
     useEffect(() => {
@@ -46,6 +50,7 @@ export function CheckoutModal({
             setQuantity(1);
             setClientSecret(null);
             setOrderId(null);
+            setIsMockMode(false);
         }
     }, [isOpen]);
 
@@ -63,12 +68,29 @@ export function CheckoutModal({
 
             setOrderId(order.id);
             if (order.stripe_client_secret) {
-                setClientSecret(order.stripe_client_secret);
+                if (order.stripe_client_secret.startsWith("mock_secret_")) {
+                    setIsMockMode(true);
+                } else {
+                    setClientSecret(order.stripe_client_secret);
+                }
             } else {
                 toast.error("Could not initialize payment.");
             }
         } catch (error: any) {
             toast.error(error.message || "Failed to create order");
+            queryClient.invalidateQueries({ queryKey: ["listings"] });
+        }
+    };
+
+    const handleMockConfirm = async () => {
+        if (!orderId) return;
+        try {
+            await mockConfirmMutation.mutateAsync(orderId);
+            toast.success("Payment successful!");
+            onClose();
+            navigate("/buyer/credits");
+        } catch (error: any) {
+            toast.error(error.message || "Mock payment failed");
         }
     };
 
@@ -98,7 +120,7 @@ export function CheckoutModal({
                     </DialogDescription>
                 </DialogHeader>
 
-                {!clientSecret ? (
+                {!clientSecret && !isMockMode ? (
                     <div className="flex flex-col gap-6 py-4">
                         <div className="flex flex-col gap-2">
                             <Label htmlFor="quantity">Quantity (Tonnes)</Label>
@@ -131,10 +153,32 @@ export function CheckoutModal({
                             Continue to Payment
                         </Button>
                     </div>
+                ) : isMockMode ? (
+                    <div className="flex flex-col gap-6 py-4">
+                        <div className="flex justify-between items-center py-4 border-t border-b">
+                            <span className="font-medium text-muted-foreground">Total Cost</span>
+                            <span className="text-xl font-bold">€{totalCost}</span>
+                        </div>
+
+                        <p className="text-sm text-muted-foreground text-center">
+                            Stripe is not configured. Click below to simulate a successful payment.
+                        </p>
+
+                        <Button
+                            onClick={handleMockConfirm}
+                            disabled={mockConfirmMutation.isPending}
+                            className="w-full"
+                        >
+                            {mockConfirmMutation.isPending ? (
+                                <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                            ) : null}
+                            Confirm Mock Payment
+                        </Button>
+                    </div>
                 ) : (
                     <div className="py-4">
-                        <Elements stripe={stripePromise} options={{ clientSecret }}>
-                            <CheckoutForm clientSecret={clientSecret} onSuccess={handlePaymentSuccess} />
+                        <Elements stripe={stripePromise} options={{ clientSecret: clientSecret! }}>
+                            <CheckoutForm clientSecret={clientSecret!} onSuccess={handlePaymentSuccess} />
                         </Elements>
                     </div>
                 )}
