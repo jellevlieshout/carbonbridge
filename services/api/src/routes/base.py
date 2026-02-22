@@ -10,6 +10,7 @@ from .orders import router as orders_router
 from .webhooks import router as webhooks_router
 from .agent import router as agent_router
 from .admin import router as admin_router
+from .auctions import router as auctions_router
 
 logger = log.get_logger(__name__)
 
@@ -23,6 +24,7 @@ router.include_router(orders_router)
 router.include_router(webhooks_router)
 router.include_router(agent_router)
 router.include_router(admin_router)
+router.include_router(auctions_router)
 
 
 @router.post("/seed", tags=["dev"])
