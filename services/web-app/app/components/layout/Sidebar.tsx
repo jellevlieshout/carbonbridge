@@ -7,7 +7,7 @@ import { useUserResourcesQuery } from '~/modules/shared/queries/useUserResources
 type UserRole = 'buyer' | 'seller' | 'both' | 'admin';
 
 const allNavItems = [
-    { label: 'Overview', icon: LayoutDashboard, href: '/buyer/dashboard', roles: ['buyer', 'seller', 'both'] as UserRole[] },
+    { label: 'Overview', icon: LayoutDashboard, href: '/buyer/dashboard', roles: ['buyer', 'both'] as UserRole[] },
     { label: 'My Listings', icon: List, href: '/seller/listings', roles: ['seller', 'both'] as UserRole[] },
     { label: 'My Credits', icon: Leaf, href: '/buyer/credits', roles: ['buyer', 'both'] as UserRole[] },
     { label: 'Available Listings', icon: ShoppingCart, href: '/marketplace', roles: ['buyer', 'both'] as UserRole[] },

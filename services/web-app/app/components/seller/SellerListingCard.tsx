@@ -2,7 +2,7 @@ import React from 'react';
 import {
     Leaf, Wind, Flame, Factory, Zap, Tractor, Sun, HelpCircle,
     Pause, Play, Archive, Pencil, ShieldCheck, AlertTriangle,
-    MapPin, Calendar, Rocket, Loader2,
+    MapPin, Calendar, Rocket, Loader2, Hash, BadgeCheck, ExternalLink,
 } from 'lucide-react';
 import type { Listing } from '@clients/api/listings';
 
@@ -132,6 +132,35 @@ export function SellerListingCard({ listing, onEdit, onStatusChange, onArchive, 
                         <div className="h-full rounded-full bg-gradient-to-r from-sage to-emerald-500 transition-all duration-700" style={{ width: `${soldPercent}%` }} />
                     </div>
                 </div>
+
+                {/* Methodology + registry ID + serial range */}
+                {(listing.methodology || listing.registry_project_id || listing.serial_number_range) && (
+                    <div className="flex flex-wrap gap-2 mb-4">
+                        {listing.methodology && (
+                            <span className="inline-flex items-center gap-1 bg-canopy/5 border border-canopy/20 text-canopy text-[10px] font-mono uppercase tracking-wider px-2.5 py-1 rounded-full">
+                                <BadgeCheck size={9} />
+                                {listing.methodology}
+                            </span>
+                        )}
+                        {listing.registry_project_id && (
+                            <a
+                                href={`https://registry.verra.org/app/projectDetail/VCS/${listing.registry_project_id.replace(/[^0-9]/g, '')}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 bg-sky-50 border border-sky-200 text-sky-600 text-[10px] font-mono uppercase tracking-wider px-2.5 py-1 rounded-full hover:bg-sky-100 transition-colors"
+                            >
+                                <Hash size={9} />
+                                {listing.registry_project_id}
+                                <ExternalLink size={8} />
+                            </a>
+                        )}
+                        {listing.serial_number_range && (
+                            <span className="inline-flex items-center gap-1 bg-slate/5 border border-mist text-slate/50 text-[10px] font-mono px-2.5 py-1 rounded-full">
+                                SN: {listing.serial_number_range}
+                            </span>
+                        )}
+                    </div>
+                )}
 
                 {/* Actions row */}
                 <div className="flex items-center justify-between pt-2">

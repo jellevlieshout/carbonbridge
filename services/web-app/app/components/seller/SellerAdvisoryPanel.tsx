@@ -37,13 +37,18 @@ function traceToCard(step: TraceStep, triggeredAt: string | null): StreamCard {
             return { icon: 'building', tone: 'info', title: out.company || 'Profile Loaded', body: 'Scanning active listings for optimization', time };
         case 'Starting Gemini listing analysis':
             return { icon: 'brain', tone: 'info', title: 'AI Market Comparison', body: 'Benchmarking against OffsetsDB data', time };
-        case 'Gemini analysis complete':
+        case 'Gemini analysis complete': {
+            const parts: string[] = [];
+            if (out.recommendation_count) parts.push(`${out.recommendation_count} optimization${out.recommendation_count > 1 ? 's' : ''} identified`);
+            if (out.high_priority_count) parts.push(`${out.high_priority_count} high-priority action${out.high_priority_count > 1 ? 's' : ''}`);
+            if (out.vcm_reference_price_eur) parts.push(`VCM ref: €${out.vcm_reference_price_eur}/t`);
             return {
                 icon: 'chart', tone: 'info', title: 'Market Position Assessed',
                 body: out.market_position ? `Position: ${out.market_position}` : 'Analysis complete',
-                detail: out.recommendation_count ? `${out.recommendation_count} optimization${out.recommendation_count > 1 ? 's' : ''} identified` : undefined,
+                detail: parts.length > 0 ? parts.join(' · ') : undefined,
                 time,
             };
+        }
         case 'Advisory recommendations generated':
             if (Array.isArray(out.recommendations) && out.recommendations.length > 0) {
                 return { icon: 'lightbulb', tone: 'recommendation', title: `${out.recommendations.length} Optimizations`, body: out.recommendations[0].summary || 'Actionable tips ready', time };
@@ -111,6 +116,9 @@ interface Recommendation {
     summary: string;
     details: string;
     suggested_price_eur: number | null;
+    suggested_price_min_eur?: number | null;
+    suggested_price_max_eur?: number | null;
+    priority?: string;
 }
 
 function extractRecommendations(steps: TraceStep[]): Recommendation[] {
@@ -128,6 +136,8 @@ function getRecTypeStyle(type: string): { bg: string; text: string; label: strin
         case 'highlight_co_benefits': return { bg: 'bg-emerald-500/15', text: 'text-emerald-300', label: 'Co-Benefits' };
         case 'vintage_note': return { bg: 'bg-sky-500/15', text: 'text-sky-300', label: 'Vintage' };
         case 'competitive_strength': return { bg: 'bg-sage/15', text: 'text-sage', label: 'Strength' };
+        case 'verify_credits': return { bg: 'bg-red-500/20', text: 'text-red-300', label: '⚠ Verify' };
+        case 'activate_listing': return { bg: 'bg-orange-500/15', text: 'text-orange-300', label: 'Activate' };
         default: return { bg: 'bg-linen/10', text: 'text-linen/60', label: 'Tip' };
     }
 }
@@ -435,22 +445,35 @@ export function SellerAdvisoryPanel() {
                                         </span>
                                     </div>
                                     <div className="flex flex-col gap-3 max-h-[300px] overflow-y-auto">
-                                        {recommendations.map((rec, i) => {
+                                        {[...recommendations].sort((a, b) => {
+                                            const order = { high: 0, medium: 1, low: 2 };
+                                            return (order[a.priority as keyof typeof order] ?? 1) - (order[b.priority as keyof typeof order] ?? 1);
+                                        }).map((rec, i) => {
                                             const style = getRecTypeStyle(rec.type);
+                                            const isHighPriority = rec.priority === 'high';
                                             return (
                                                 <div
                                                     key={`${rec.listing_id}-${i}`}
-                                                    className="rounded-xl p-4 border border-linen/5 bg-linen/[0.03] backdrop-blur-sm"
+                                                    className={`rounded-xl p-4 border backdrop-blur-sm ${isHighPriority ? 'border-red-500/20 bg-red-500/5' : 'border-linen/5 bg-linen/[0.03]'}`}
                                                 >
-                                                    <div className="flex items-center gap-2 mb-2">
+                                                    <div className="flex items-center gap-2 mb-2 flex-wrap">
                                                         <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-[4px] uppercase ${style.bg} ${style.text}`}>
                                                             {style.label}
                                                         </span>
-                                                        {rec.suggested_price_eur && (
-                                                            <span className="font-mono text-[10px] text-emerald-300/60 bg-emerald-500/10 px-2 py-0.5 rounded-full">
-                                                                €{rec.suggested_price_eur.toFixed(2)}
+                                                        {isHighPriority && (
+                                                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-[4px] uppercase bg-red-500/20 text-red-300">
+                                                                Action Required
                                                             </span>
                                                         )}
+                                                        {rec.suggested_price_min_eur && rec.suggested_price_max_eur ? (
+                                                            <span className="font-mono text-[10px] text-emerald-300/80 bg-emerald-500/10 px-2 py-0.5 rounded-full">
+                                                                €{rec.suggested_price_min_eur.toFixed(2)}–€{rec.suggested_price_max_eur.toFixed(2)}/t
+                                                            </span>
+                                                        ) : rec.suggested_price_eur ? (
+                                                            <span className="font-mono text-[10px] text-emerald-300/60 bg-emerald-500/10 px-2 py-0.5 rounded-full">
+                                                                €{rec.suggested_price_eur.toFixed(2)}/t
+                                                            </span>
+                                                        ) : null}
                                                     </div>
                                                     <p className="font-sans text-xs text-linen/80 leading-relaxed">{rec.summary}</p>
                                                     <ExpandableText text={rec.details} className="font-mono text-[10px] text-linen/40 mt-2" threshold={150} />
