@@ -186,20 +186,28 @@ export function WizardPresenter({ onComplete }: WizardPresenterProps = {}) {
         onSend={handleSend}
       />
       {awaitingWaitlistAgreement && (
-        <div className="mt-3 rounded-xl border border-canopy/20 bg-canopy/5 p-4 text-center">
-          <p className="text-sm text-slate/80">
-            Your autonomous agent is ready. Confirm to enter monitoring.
-          </p>
-          <button
-            onClick={() => {
-              setAwaitingWaitlistAgreement(false);
-              setIsComplete(true);
-            }}
-            className="mt-3 inline-flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-semibold bg-canopy text-linen hover:bg-canopy/90 transition-colors cursor-pointer border-0"
-          >
-            Agree and continue
-            <ArrowRight size={16} />
-          </button>
+        <div className="mt-4 rounded-2xl border-2 border-canopy/30 bg-gradient-to-br from-canopy/8 to-canopy/4 p-6 text-center shadow-lg animate-in fade-in slide-in-from-bottom-3 duration-400">
+          <div className="flex flex-col items-center gap-4">
+            <div className="w-12 h-12 rounded-full bg-canopy/15 flex items-center justify-center">
+              <Sparkles size={22} className="text-canopy" />
+            </div>
+            <div className="space-y-1">
+              <p className="text-base font-semibold text-slate">Autonomous agent ready</p>
+              <p className="text-sm text-slate/60 max-w-xs mx-auto">
+                Your agent will monitor the market and buy matching credits automatically. Cancel any time from your dashboard.
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                setAwaitingWaitlistAgreement(false);
+                setIsComplete(true);
+              }}
+              className="w-full max-w-xs inline-flex items-center justify-center gap-2 px-6 py-3 rounded-full text-sm font-semibold bg-canopy text-linen hover:bg-canopy/90 active:scale-95 transition-all cursor-pointer border-0 shadow-md"
+            >
+              Enter CarbonBridge
+              <ArrowRight size={16} />
+            </button>
+          </div>
         </div>
       )}
       {onComplete && (

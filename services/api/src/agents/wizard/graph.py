@@ -822,10 +822,16 @@ async def node_autobuy_waitlist(state: WizardState) -> Dict[str, Any]:
                 "Write a brief closing message confirming the conversation is complete."
             )
     elif already_opted_in:
-        # They already said yes — confirm and close
+        # They already said yes — confirm and close with a warm, definitive farewell
         instructions = (
-            "The buyer already agreed to autonomous purchasing. "
-            "Confirm their preferences are saved and the agent will monitor the market. "
+            "The buyer has agreed to autonomous purchasing and the monitoring agent is now active. "
+            "Write a warm, definitive closing message (2-3 sentences max): "
+            "1. Confirm that the monitoring agent is now active. "
+            "2. Mention what it will do (auto-buy matching credits when they appear). "
+            "3. End with a brief, warm sign-off — e.g. 'Great choice! Welcome to CarbonBridge.' "
+            "CRITICAL: Do NOT ask 'Is there anything else I can help with?' or any follow-up question. "
+            "Do NOT invite the buyer to continue the conversation. "
+            "This is the final message — end it conclusively and warmly. "
             "Set buyer_wants_autobuy_waitlist=True."
         )
     else:
@@ -836,6 +842,7 @@ async def node_autobuy_waitlist(state: WizardState) -> Dict[str, Any]:
             "  set buyer_wants_autobuy_waitlist=True and confirm: "
             "  'Done! I've activated the monitoring agent for you. It will automatically buy "
             "  matching credits when they appear. You can cancel from your dashboard.' "
+            "  Then end warmly and conclusively — do NOT ask follow-up questions. "
             "- If they said no / not now / maybe later → set buyer_declined_autobuy=True. "
             "- Otherwise ask clearly: 'Would you like our autonomous agent to monitor the "
             "  market and automatically purchase matching carbon credits when they become "
