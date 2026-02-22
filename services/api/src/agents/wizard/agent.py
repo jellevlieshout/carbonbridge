@@ -149,7 +149,7 @@ _STEP_OUTPUT_MAP: dict[str, Type[BaseModel]] = {
 
 
 def _build_model() -> GoogleModel:
-    model_name = os.environ.get("WIZARD_MODEL", "gemini-3-flash-preview")
+    model_name = os.environ.get("WIZARD_MODEL", "gemini-2.5-flash")
     api_key = (
         os.environ.get("GOOGLE_API_KEY")
         or os.environ.get("GEMINI_API_KEY")

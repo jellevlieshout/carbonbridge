@@ -77,6 +77,7 @@ export interface SSECheckoutReadyEvent {
   order_id: string;
   total_eur: number;
   project_name: string;
+  client_secret: string;
 }
 
 export type SSEEvent =

@@ -63,8 +63,8 @@ def _buyer_handoff_event(outcome: str, message: str) -> Dict[str, Any]:
     return {"type": "buyer_handoff", "outcome": outcome, "message": message}
 
 
-def _checkout_ready_event(order_id: str, total_eur: float, project_name: str = "") -> Dict[str, Any]:
-    return {"type": "checkout_ready", "order_id": order_id, "total_eur": total_eur, "project_name": project_name}
+def _checkout_ready_event(order_id: str, total_eur: float, project_name: str = "", client_secret: str = "") -> Dict[str, Any]:
+    return {"type": "checkout_ready", "order_id": order_id, "total_eur": total_eur, "project_name": project_name, "client_secret": client_secret}
 
 
 def _waitlist_event(opted_in: bool) -> Dict[str, Any]:
@@ -581,6 +581,7 @@ async def run_wizard_turn(
                 checkout["order_id"],
                 checkout["total_eur"],
                 checkout.get("project_name", ""),
+                checkout.get("client_secret", ""),
             )
             try:
                 await wizard_session_save_context(
