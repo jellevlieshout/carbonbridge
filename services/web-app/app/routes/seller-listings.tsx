@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { listingsGetMine, listingUpdate, listingDelete, listingVerify, type Listing } from '@clients/api/listings';
-import { Leaf, Plus } from 'lucide-react';
+import { Leaf, Plus, Gavel } from 'lucide-react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 
@@ -10,7 +10,9 @@ import { SellerStatsTiles } from '../components/seller/SellerStatsTiles';
 import { SellerListingCard } from '../components/seller/SellerListingCard';
 import { EditListingModal } from '../components/seller/EditListingModal';
 import { CreateListingModal } from '../components/seller/CreateListingModal';
+import { CreateAuctionModal } from '../components/seller/CreateAuctionModal';
 import { useCreateListing } from '../modules/shared/queries/useListings';
+import { useCreateAuction } from '../modules/shared/queries/useAuctions';
 import type { Route } from "./+types/seller-listings";
 
 export function meta({ }: Route.MetaArgs) {
@@ -26,9 +28,11 @@ export default function SellerListingsPage() {
     const queryClient = useQueryClient();
     const [editingListing, setEditingListing] = useState<Listing | null>(null);
     const [showCreateModal, setShowCreateModal] = useState(false);
+    const [showAuctionModal, setShowAuctionModal] = useState(false);
     const [filter, setFilter] = useState<string>('all');
     const listingsRef = useRef<HTMLDivElement>(null);
     const createMutation = useCreateListing();
+    const createAuctionMutation = useCreateAuction();
 
     const { data, isLoading } = useQuery({
         queryKey: ['listings', 'mine'],
@@ -115,6 +119,14 @@ export default function SellerListingsPage() {
                         <Plus size={16} className="relative z-10" />
                         <span className="relative z-10">Add Listing</span>
                     </button>
+                    <button
+                        onClick={() => setShowAuctionModal(true)}
+                        className="magnetic-btn h-10 px-5 rounded-full bg-slate text-linen font-medium text-sm cursor-pointer border-0 flex items-center gap-2 shrink-0 self-start mt-1"
+                    >
+                        <div className="magnetic-bg bg-ember" />
+                        <Gavel size={16} className="relative z-10" />
+                        <span className="relative z-10">Create Auction</span>
+                    </button>
                 </div>
 
                 <div className="flex gap-2">
@@ -182,6 +194,19 @@ export default function SellerListingsPage() {
                         });
                     }}
                     isSubmitting={createMutation.isPending}
+                />
+            )}
+
+            {/* Create Auction Modal */}
+            {showAuctionModal && (
+                <CreateAuctionModal
+                    onClose={() => setShowAuctionModal(false)}
+                    onSave={(data) => {
+                        createAuctionMutation.mutate(data, {
+                            onSuccess: () => setShowAuctionModal(false),
+                        });
+                    }}
+                    isSubmitting={createAuctionMutation.isPending}
                 />
             )}
         </div>
