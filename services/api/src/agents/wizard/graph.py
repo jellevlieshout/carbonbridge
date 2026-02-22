@@ -90,6 +90,14 @@ def _build_context_block(state: WizardState) -> str:
     if motivation:
         parts.append(f"Offset motivation: {motivation}")
 
+    sustainability_goal = bp.get("sustainability_goal")
+    if sustainability_goal:
+        parts.append(f"Sustainability goal: {sustainability_goal}")
+
+    emission_sources = bp.get("emission_sources") or []
+    if emission_sources:
+        parts.append(f"Main emission sources: {', '.join(emission_sources)}")
+
     if bp.get("annual_co2_tonnes_estimate"):
         parts.append(f"Saved annual footprint: {bp['annual_co2_tonnes_estimate']} tonnes")
 
@@ -119,7 +127,11 @@ def _build_context_block(state: WizardState) -> str:
 
     listings = state.get("recommended_listings") or []
     if listings:
-        parts.append(f"{len(listings)} listings already shown to buyer")
+        listing_ids = [item.get("id") for item in listings if item.get("id")]
+        if listing_ids:
+            parts.append(f"Selected/recommended listing IDs: {', '.join(listing_ids)}")
+        else:
+            parts.append(f"{len(listings)} listings already shown to buyer")
 
     if state.get("search_broadened"):
         parts.append("[Search has already been broadened once — no more broadening]")
@@ -208,16 +220,25 @@ def _footprint_is_accepted(state: WizardState, output: FootprintOutput) -> bool:
         return True
     fp = state.get("footprint_estimate")
     if fp and fp.get("midpoint"):
-        msg = (state.get("latest_user_message") or "").lower()
-        acceptance_words = {
-            "ok", "okay", "yes", "yeah", "sure", "fine", "good", "correct",
-            "right", "proceed", "go", "continue", "accept", "next", "sounds",
-            "that", "perfect", "great", "makes", "seems", "looks", "alright",
-            "all", "yep", "yup", "definitely", "absolutely", "please",
+        msg = (state.get("latest_user_message") or "").lower().strip()
+        # Only match clear, unambiguous acceptance — avoid false positives
+        # from words like "that", "seems", "all" which appear in questions too
+        strong_acceptance = {
+            "ok", "okay", "yes", "yeah", "sure", "fine", "correct",
+            "proceed", "continue", "accept", "next", "perfect",
+            "yep", "yup", "definitely", "absolutely",
         }
-        if acceptance_words & set(msg.split()):
+        if strong_acceptance & set(msg.split()):
             return True
-        # Also handle "I'm not sure" → accept estimate and move on
+        # Phrase-level acceptance (more context = fewer false positives)
+        acceptance_phrases = [
+            "sounds right", "sounds good", "sounds about right",
+            "looks right", "looks good", "that's fine", "that's correct",
+            "let's go", "move on", "go ahead", "alright",
+            "makes sense", "i agree", "good enough",
+        ]
+        if any(phrase in msg for phrase in acceptance_phrases):
+            return True
         unsure_phrases = ["not sure", "don't know", "no idea", "unsure", "whatever"]
         if any(phrase in msg for phrase in unsure_phrases):
             return True
@@ -225,14 +246,13 @@ def _footprint_is_accepted(state: WizardState, output: FootprintOutput) -> bool:
 
 
 def _preferences_captured(state: WizardState, output: PreferenceOutput) -> bool:
-    """Return True when at least one project type is known."""
-    if output.project_types:
-        return True
-    prefs = state.get("extracted_preferences")
-    if prefs and prefs.project_types:
-        return True
-    bp = state.get("buyer_profile") or {}
-    return bool(bp.get("preferred_project_types"))
+    """
+    Return True only when the LLM explicitly sets advance_to_search.
+    We no longer auto-advance just because saved preferences exist — the user
+    should be able to explore options, change their mind, and have a conversation
+    about what project types they care about before we search.
+    """
+    return output.advance_to_search
 
 
 def _extract_profile_updates(
@@ -321,18 +341,24 @@ async def node_profile_check(state: WizardState) -> Dict[str, Any]:
     if sector and employees:
         if is_first_message:
             instructions = (
-                "This is the very first message — start the conversation! "
-                "Greet the buyer warmly. Tell them their company sector and size are already on file. "
-                "Set profile_complete=True and advance_to_footprint=True. "
-                "Immediately say you'll now estimate their carbon footprint. "
-                "Be enthusiastic and concise — 2–3 sentences max."
+                "This is the very first message — deliver a proper welcome to CarbonBridge! "
+                "1. Say 'Welcome to CarbonBridge!' warmly. "
+                "2. In 1-2 sentences explain what CarbonBridge does and what you'll do together "
+                "   (e.g. estimate footprint → find matching projects → purchase verified offsets). "
+                "3. Tell them you can see their company profile is already on file (sector + size). "
+                "4. Ask ONE engaging follow-up: what drives their interest in carbon offsetting today? "
+                "   Or mention their sector and ask about their biggest emission sources. "
+                "Set profile_complete=True but set advance_to_footprint=FALSE — "
+                "we want to get to know them before jumping to numbers. "
+                "Keep it warm, friendly, 3-4 sentences max."
             )
         else:
             instructions = (
                 "The buyer's sector and employee count are ALREADY KNOWN (shown above in context). "
                 "Set profile_complete=True and advance_to_footprint=True. "
-                "Write a brief welcoming message acknowledging their company/sector "
-                "and say you'll estimate their carbon footprint. "
+                "Acknowledge their response warmly. If they shared sustainability goals or "
+                "emission sources, acknowledge those and say you'll use that context. "
+                "Now move to footprint estimation. "
                 "Do NOT ask for sector or employees again."
             )
     else:
@@ -343,10 +369,15 @@ async def node_profile_check(state: WizardState) -> Dict[str, Any]:
             missing.append("number of employees")
         if is_first_message:
             instructions = (
-                "This is the very first message in the conversation — greet the buyer warmly! "
-                "Introduce yourself as their CarbonBridge guide. "
-                f"Then ask for their {' and '.join(missing)} in a friendly, natural way. "
-                "Make it feel like a real conversation, not a form. Keep it short."
+                "This is the very FIRST message — deliver a proper welcome to CarbonBridge! "
+                "Structure your message: "
+                "1. Open with 'Welcome to CarbonBridge!' — enthusiastic and warm. "
+                "2. In 1 sentence explain what you'll do together: estimate their carbon footprint, "
+                "   match them to verified offset projects, and make a real climate impact. "
+                "3. Tell them you just need a couple of details to get started. "
+                f"4. Ask for their {' and '.join(missing)} in a friendly, conversational way — "
+                "   NOT like a form. Make it feel like a real conversation. "
+                "Keep it to 3-4 sentences. Be enthusiastic and approachable."
             )
         else:
             instructions = (
@@ -359,13 +390,28 @@ async def node_profile_check(state: WizardState) -> Dict[str, Any]:
     output: ProfileIntentOutput = result.output
 
     bp = _extract_profile_updates(enriched, output)
-    advance = output.advance_to_footprint or _profile_has_minimum(enriched, output)
+    # On first message, don't force-advance — let the welcome conversation breathe.
+    # On subsequent messages, use the deterministic guard as a safety net.
+    if is_first_message:
+        advance = output.advance_to_footprint
+    else:
+        advance = output.advance_to_footprint or _profile_has_minimum(enriched, output)
+
+    # Persist sustainability extras into buyer_profile
+    if output.sustainability_goal and not bp.get("sustainability_goal"):
+        bp["sustainability_goal"] = output.sustainability_goal
+    if output.emission_sources:
+        bp.setdefault("emission_sources", [])
+        for src in output.emission_sources:
+            if src not in bp["emission_sources"]:
+                bp["emission_sources"].append(src)
 
     return {
         **profile_updates,
         "response_text": output.response_text,
         "next_step": "footprint_estimate" if advance else None,
         "buyer_profile": bp,
+        "suggested_responses": output.suggested_responses,
     }
 
 
@@ -411,6 +457,7 @@ async def node_onboarding(state: WizardState) -> Dict[str, Any]:
         "response_text": output.response_text,
         "next_step": "footprint_estimate" if advance else None,
         "buyer_profile": bp,
+        "suggested_responses": output.suggested_responses,
     }
 
 
@@ -463,30 +510,78 @@ async def node_footprint_estimate(state: WizardState) -> Dict[str, Any]:
         if not updates.get("footprint_estimate") and state.get("footprint_estimate"):
             updates["footprint_estimate"] = state.get("footprint_estimate")
 
+    updates["suggested_responses"] = output.suggested_responses
     return updates
 
 
 async def node_preference_elicitation(state: WizardState) -> Dict[str, Any]:
-    """Step 2: Capture project type preferences; auto-advance when at least one known."""
-    # Check if we already have preferences from saved profile
+    """Step 2: Capture project type preferences conversationally."""
     bp = state.get("buyer_profile") or {}
     saved_types = bp.get("preferred_project_types") or []
     existing_prefs = state.get("extracted_preferences")
     existing_types = (existing_prefs.project_types if existing_prefs else []) or saved_types
 
-    if existing_types:
+    latest_msg = (state.get("latest_user_message") or "").lower().strip()
+
+    # Robust detection: does the user's message mention a specific project type?
+    _type_signals = {
+        "energy_efficiency": ["energy efficiency", "energy saving", "insulation", "efficient"],
+        "renewable": ["renewable", "solar", "wind"],
+        "afforestation": ["forest", "tree", "afforestation", "planting trees", "reforestation"],
+        "cookstoves": ["cookstove", "clean cooking", "stove"],
+        "methane_capture": ["methane", "landfill"],
+        "agriculture": ["agriculture", "farming", "soil carbon", "regenerative"],
+        "fuel_switching": ["fuel switching", "cleaner fuel"],
+    }
+    user_mentioned_types = [
+        t for t, kws in _type_signals.items()
+        if any(kw in latest_msg for kw in kws)
+    ]
+
+    # Also detect if user is confirming/accepting (to advance with existing)
+    _confirm_words = {"yes", "ok", "okay", "sure", "yeah", "yep", "those", "same", "confirm",
+                      "sounds good", "let's go", "search", "find", "proceed"}
+    user_confirming = bool(_confirm_words & set(latest_msg.split())) or \
+        any(p in latest_msg for p in ["sounds good", "let's go", "go ahead", "search for"])
+
+    if user_mentioned_types:
+        # User expressed a clear preference NOW — always honour it
+        mentioned_str = ", ".join(user_mentioned_types)
         instructions = (
-            f"The buyer already has saved project preferences: {', '.join(existing_types)}. "
-            "Set advance_to_search=True and include these in project_types. "
-            "Do NOT ask again — acknowledge and say you are searching now."
+            f"The buyer just expressed interest in: {mentioned_str}. "
+            "CRITICAL: Use THEIR stated preference. Do NOT substitute saved/previous preferences. "
+            f"Set project_types to {user_mentioned_types}. "
+            "Acknowledge their choice warmly (1-2 sentences — why this is a great choice for their context). "
+            "Then say you'll search for matching projects and set advance_to_search=True."
+        )
+    elif existing_types and user_confirming:
+        # User confirmed saved preferences
+        instructions = (
+            f"The buyer confirmed their previous preferences: {', '.join(existing_types)}. "
+            "Set project_types to these and set advance_to_search=True. "
+            "Say you'll search for matching projects now."
+        )
+    elif existing_types:
+        instructions = (
+            f"The buyer previously saved preferences for: {', '.join(existing_types)}. "
+            "Mention these briefly and ask if they're still interested, or if they'd like "
+            "to explore different types this time. "
+            "Also present other options: afforestation, renewable energy, "
+            "clean cookstoves, methane capture, energy efficiency. "
+            "Relate options to their sector/emission sources from context. "
+            "Do NOT auto-advance — wait for their response."
         )
     else:
         instructions = (
-            "Present 3–4 project type options with plain-language descriptions: "
-            "afforestation (planting forests), renewable energy, clean cookstoves, "
-            "methane capture, energy efficiency. "
-            "Ask the buyer which appeals to them most. "
-            "As soon as they mention any type, set advance_to_search=True."
+            "Present the project types with friendly descriptions: "
+            "* Afforestation — planting and restoring forests to absorb CO2 "
+            "* Renewable Energy — funding wind and solar that replace fossil fuels "
+            "* Clean Cookstoves — reducing indoor air pollution in rural communities "
+            "* Methane Capture — preventing methane from landfills and agriculture "
+            "* Energy Efficiency — improving buildings and processes to waste less energy "
+            "Relate options to their sector/emission sources from context if possible. "
+            "Ask which appeals to them most. "
+            "Do NOT set advance_to_search=True yet — wait for their response."
         )
 
     agent = create_wizard_agent("preference_elicitation")
@@ -498,9 +593,18 @@ async def node_preference_elicitation(state: WizardState) -> Dict[str, Any]:
         "next_step": None,
     }
 
-    # Merge project types from output + existing
-    all_types = list(dict.fromkeys(output.project_types + existing_types))
+    # If user explicitly mentioned types, those take absolute priority
+    if user_mentioned_types:
+        primary_types = user_mentioned_types
+    elif output.project_types:
+        primary_types = output.project_types
+    else:
+        primary_types = existing_types
+
+    all_types = list(dict.fromkeys(primary_types))
     all_regions = list(dict.fromkeys(output.regions + (existing_prefs.regions if existing_prefs else [])))
+    logger.info("Preference merge: user_detected=%s output=%s existing=%s → final=%s",
+                user_mentioned_types, output.project_types, existing_types, all_types)
 
     if all_types or output.project_types:
         from models.entities.couchbase.wizard_sessions import ExtractedPreferences
@@ -514,6 +618,7 @@ async def node_preference_elicitation(state: WizardState) -> Dict[str, Any]:
     if output.advance_to_search or _preferences_captured(state, output):
         updates["next_step"] = "listing_search"
 
+    updates["suggested_responses"] = output.suggested_responses
     return updates
 
 
@@ -522,16 +627,33 @@ async def node_listing_search(state: WizardState) -> Dict[str, Any]:
     prefs = state.get("extracted_preferences")
     bp = state.get("buyer_profile") or {}
     max_price = (prefs.max_price_eur if prefs else None) or bp.get("budget_per_tonne_max_eur") or 50
-    project_type_hint = prefs.project_types[0] if prefs and prefs.project_types else "any"
+
+    all_pref_types = (prefs.project_types if prefs else []) or bp.get("preferred_project_types") or []
+    project_types_str = ", ".join(all_pref_types) if all_pref_types else "any"
+
+    fp = state.get("footprint_estimate") or {}
+    target_tonnes = fp.get("midpoint")
+
+    primary_type = all_pref_types[0] if all_pref_types else "any"
 
     instructions = (
-        "Call tool_search_listings using the buyer's project type preferences and budget. "
-        f"Use project_type={project_type_hint}. "
-        f"Use max_price={max_price}. "
-        "Present up to 3 matching listings with a 'why we picked this for you' blurb each. "
-        "Include price per tonne and estimated total for their footprint. "
-        "If NO listings found, ask: 'Would you like our agent to monitor the market and automatically "
-        "purchase matching credits when they become available?' — clear yes/no question."
+        "Call tool_search_listings to find matching carbon credit projects. "
+        f"The buyer's preferred project type is: {primary_type}. "
+        f"IMPORTANT: Search for '{primary_type}' specifically — this is what the buyer asked for. "
+        f"Use project_type='{primary_type}' and max_price={max_price}. "
+        f"{'The buyer wants to offset about ' + str(target_tonnes) + ' tonnes.' if target_tonnes else ''} "
+        "Present up to 3 matching listings. For each listing include: "
+        "1. Project name and country "
+        "2. Price per tonne in EUR "
+        "3. Total estimated cost for their footprint "
+        f"4. A 'why this fits you' sentence connecting the project to their interest in {primary_type} "
+        "After presenting, ask which interests them or if they'd like different options. "
+        "Do NOT auto-select a listing — wait for the buyer to choose. "
+        "Do NOT set advance_to_order=True or selected_listing_id unless the buyer explicitly picks one. "
+        "ALWAYS generate 3-4 suggested_responses — e.g. 'I like the first one', "
+        "'Tell me more about option 2', 'Show me different projects', 'What's the best value?' "
+        "If NO listings found, ask: 'Would you like our agent to monitor the market "
+        "and automatically purchase matching credits when they become available?'"
     )
 
     agent = create_wizard_agent("listing_search")
@@ -543,43 +665,54 @@ async def node_listing_search(state: WizardState) -> Dict[str, Any]:
         "next_step": None,
     }
 
-    if output.selected_listing_id or output.advance_to_order:
-        # User already picked a listing → go directly to buyer agent handoff
+    if output.selected_listing_id and output.advance_to_order:
         updates["next_step"] = "order_creation"
-        if output.selected_listing_id:
-            # Store selected listing in recommended_listings for order node
-            updates["recommended_listings"] = [{"id": output.selected_listing_id}]
-    elif not output.listings_found or output.buyer_wants_autobuy_waitlist:
+        updates["recommended_listings"] = [{"id": output.selected_listing_id}]
+    elif not output.listings_found:
         updates["next_step"] = "autobuy_waitlist"
-        if output.buyer_wants_autobuy_waitlist:
-            updates["autobuy_opt_in"] = True
+    elif output.buyer_wants_autobuy_waitlist:
+        updates["next_step"] = "autobuy_waitlist"
+        updates["autobuy_opt_in"] = True
     elif output.buyer_declined_autobuy:
         updates["waitlist_declined"] = True
         updates["conversation_complete"] = True
         updates["next_step"] = "autobuy_waitlist"
-    # else: stay on recommendation step waiting for buyer selection
+    elif output.listings_found:
+        # Listings were shown — move to recommendation step for the user to pick
+        updates["next_step"] = "recommendation"
 
+    updates["suggested_responses"] = output.suggested_responses
     return updates
 
 
 async def node_recommendation(state: WizardState) -> Dict[str, Any]:
     """Step 3b: Handle buyer selection, broadening, or no-match."""
     search_broadened = state.get("search_broadened", False)
+    latest_msg = (state.get("latest_user_message") or "").lower().strip()
 
     if search_broadened:
         instructions = (
             "The search has already been broadened once. "
-            "If no match or buyer declines: ask clearly: "
-            "'Would you like our agent to automatically buy matching credits when available?' "
-            "Set buyer_wants_autobuy_waitlist=True if they say yes. "
-            "Set buyer_declined_autobuy=True if they say no."
+            "Help the buyer decide: do they want one of the listings shown, or would they prefer "
+            "to have our autonomous agent monitor and buy automatically? "
+            "If buyer picks a listing — set selected_listing_id and advance_to_order=True. "
+            "If buyer says yes to monitoring — set buyer_wants_autobuy_waitlist=True. "
+            "If buyer says no thanks — set buyer_declined_autobuy=True. "
+            "ALWAYS generate 3-4 suggested_responses."
         )
     else:
         instructions = (
-            "Help the buyer select one of the shown listings. "
-            "If they name or pick one — set selected_listing_id and advance_to_order=True. "
+            "The buyer is responding to the listings shown. Read their latest message carefully. "
+            "If they name or reference a specific listing (by name, number, or description) — "
+            "  set selected_listing_id to the EXACT ID from search results and advance_to_order=True. "
+            "If they say 'first one', 'option 1', 'the solar one', etc. — match it to the correct listing ID. "
+            "If they ask for more details — call tool_get_listing_detail and share details. "
             "If they want different options — set buyer_wants_broader_search=True. "
-            "If they decline all — set buyer_declined_all=True."
+            "If they decline all — set buyer_declined_all=True. "
+            "If they ask a follow-up question, answer it helpfully and invite them to pick. "
+            "CRITICAL: ALWAYS generate 3-4 suggested_responses. Examples: "
+            "'I'll go with option 1', 'Tell me more about the second one', "
+            "'Show me different projects', 'What makes this one verified?'"
         )
 
     agent = create_wizard_agent("recommendation")
@@ -608,6 +741,7 @@ async def node_recommendation(state: WizardState) -> Dict[str, Any]:
     elif output.buyer_declined_all or (output.buyer_wants_broader_search and search_broadened):
         updates["next_step"] = "autobuy_waitlist"
 
+    updates["suggested_responses"] = output.suggested_responses
     return updates
 
 
@@ -619,13 +753,34 @@ async def node_order_creation(state: WizardState) -> Dict[str, Any]:
     The actual buyer agent will be triggered by the runner after this node
     when order_confirmed=True.
     """
-    instructions = (
-        "Create the draft order using tool_create_order_draft. "
-        "Use the first recommended listing ID from context and the buyer's target tonnage. "
-        "Present a clear summary: project name, quantity, price per tonne, total EUR. "
-        "End with: 'Shall I proceed to payment?' "
-        "Set order_confirmed=True when the buyer explicitly agrees."
-    )
+    has_draft = bool(state.get("draft_order_id"))
+    if has_draft:
+        instructions = (
+            "A draft order already exists (shown in context). "
+            "The buyer is responding to the order summary. "
+            "If they confirm (yes, proceed, pay, go ahead, do it, let's do it) — "
+            "set order_confirmed=True. "
+            "If they want to change quantity or go back — explain what's possible. "
+            "ALWAYS generate 3-4 suggested_responses like: "
+            "'Yes, proceed to payment', 'Can I change the quantity?', "
+            "'Go back to other options', 'How does payment work?'"
+        )
+    else:
+        instructions = (
+            "Create the draft order using tool_create_order_draft. "
+            "Use the first recommended listing ID from context and the buyer's target tonnage "
+            "(from footprint midpoint if they didn't specify a different quantity). "
+            "Present a clear, friendly summary: "
+            "• Project name and what it does (1 sentence) "
+            "• Quantity in tonnes "
+            "• Price per tonne in EUR "
+            "• Total cost in EUR "
+            "End with a warm: 'Ready to make your impact? Just confirm and we'll proceed to payment.' "
+            "Do NOT set order_confirmed=True yet — wait for the buyer to explicitly agree. "
+            "ALWAYS generate 3-4 suggested_responses like: "
+            "'Yes, let's do it!', 'Can I adjust the quantity?', "
+            "'Go back to other options', 'How does payment work?'"
+        )
 
     agent = create_wizard_agent("order_creation")
     result = await agent.run(_prompt_for_step(state, instructions), deps=_build_deps(state))
@@ -640,10 +795,10 @@ async def node_order_creation(state: WizardState) -> Dict[str, Any]:
         updates["draft_order_id"] = output.order_id
 
     if output.order_confirmed:
-        # Signal to the runner to trigger buyer agent
         updates["next_step"] = "complete"
         updates["handoff_to_buyer_agent"] = True
 
+    updates["suggested_responses"] = output.suggested_responses
     return updates
 
 
@@ -720,6 +875,7 @@ async def node_autobuy_waitlist(state: WizardState) -> Dict[str, Any]:
         }
         updates["waitlist_opted_in"] = True
 
+    updates["suggested_responses"] = output.suggested_responses
     return updates
 
 

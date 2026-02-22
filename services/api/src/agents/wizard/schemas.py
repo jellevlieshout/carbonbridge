@@ -23,6 +23,25 @@ def _nonempty_response(v: str) -> str:
     return v.strip()
 
 
+_SUGGESTED_RESPONSES_FIELD = Field(
+    default_factory=list,
+    description=(
+        "REQUIRED — you MUST generate 3-4 short, natural response options every single turn. "
+        "These are shown as clickable quick-reply buttons in the UI. Never leave this empty. "
+        "Rules: (1) Each must be 3–12 words, (2) Vary the options: include acceptance, "
+        "a clarifying question, and at least one alternative path, (3) Match the current "
+        "conversation context exactly, (4) Never suggest the same thing twice, "
+        "(5) Use plain, conversational language. "
+        "Step-specific examples: "
+        "Profile: ['We care about sustainability', 'Our biggest source is energy', 'Tell me more about CarbonBridge'] "
+        "Footprint: ['That sounds about right', 'Can you explain the calculation?', 'We emit closer to 200 tonnes'] "
+        "Preferences: ['Energy efficiency projects', 'Renewable energy', 'Forest conservation', 'Show me all types'] "
+        "Recommendations: ['I like the first one', 'Tell me more about option 2', 'Show me different projects'] "
+        "Order: ['Yes, proceed to payment', 'Can I change the quantity?', 'Go back to options']"
+    ),
+)
+
+
 # ── Transition step literals ──────────────────────────────────────────
 
 WizardNextStep = Literal[
@@ -97,6 +116,24 @@ class ProfileIntentOutput(BaseModel):
         ),
     )
 
+    emission_sources: List[str] = Field(
+        default_factory=list,
+        description=(
+            "Main sources of emissions the buyer mentioned (e.g. 'energy', 'transport', "
+            "'supply_chain', 'manufacturing', 'office_operations', 'business_travel'). "
+            "Extract from what they say. Empty if not mentioned."
+        ),
+    )
+    sustainability_goal: Optional[str] = Field(
+        None,
+        description=(
+            "The buyer's stated sustainability goal or target if mentioned. "
+            "E.g. 'net zero by 2030', 'carbon neutral', 'reduce emissions 50%'."
+        ),
+    )
+
+    suggested_responses: List[str] = _SUGGESTED_RESPONSES_FIELD
+
     _validate_response = field_validator("response_text")(_nonempty_response)
 
 
@@ -140,6 +177,8 @@ class FootprintOutput(BaseModel):
         ),
     )
 
+    suggested_responses: List[str] = _SUGGESTED_RESPONSES_FIELD
+
     _validate_response = field_validator("response_text")(_nonempty_response)
 
 
@@ -150,20 +189,20 @@ class PreferenceOutput(BaseModel):
 
     response_text: str = Field(
         description=(
-            "Warm acknowledgement of their choice and a brief, jargon-free description "
-            "of each project type mentioned. "
-            "If preferences are already saved in context, acknowledge them and say "
-            "you are searching now — do NOT ask again. "
-            "Max 3 sentences."
+            "Your reply. When presenting project types, give warm plain-language descriptions. "
+            "When the buyer picks a type, acknowledge warmly and ask if they want to search now. "
+            "When confirming before search, briefly summarise what you'll search for. "
+            "Max 4 sentences."
         )
     )
     project_types: List[str] = Field(
         default_factory=list,
         description=(
-            "Project types the buyer selected or mentioned. "
+            "Project types the buyer selected or mentioned in their LATEST message. "
+            "CRITICAL: Extract from what the buyer JUST SAID — prioritise their current message "
+            "over any saved preferences. If they said 'energy efficiency', put 'energy_efficiency'. "
             "Valid values: afforestation, renewable, cookstoves, methane_capture, "
-            "fuel_switching, energy_efficiency, agriculture, other. "
-            "Extract from their message AND from saved preferences in context."
+            "fuel_switching, energy_efficiency, agriculture, other."
         ),
     )
     regions: List[str] = Field(
@@ -181,12 +220,15 @@ class PreferenceOutput(BaseModel):
     advance_to_search: bool = Field(
         False,
         description=(
-            "Set True to search for listings. "
-            "Set True as soon as at least one project type is known — from current "
-            "message OR from saved preferences in context. "
-            "Do NOT wait for the buyer to give multiple types."
+            "Set True ONLY when the buyer explicitly confirms they want to search. "
+            "Confirmation words: 'yes', 'search', 'find me', 'let's go', 'sounds good', 'proceed'. "
+            "Do NOT set True just because a project type was mentioned — the buyer may want to "
+            "explore options, ask questions, or change their mind first. "
+            "When in doubt, keep False and ask 'Shall I search for matching projects?'"
         ),
     )
+
+    suggested_responses: List[str] = _SUGGESTED_RESPONSES_FIELD
 
     _validate_response = field_validator("response_text")(_nonempty_response)
 
@@ -200,10 +242,9 @@ class RecommendationOutput(BaseModel):
         description=(
             "Present listings clearly with a 'why we picked this for you' blurb per listing. "
             "Include: project name, country, price/tonne, total cost for their quantity. "
-            "If no listings were found, explain clearly and ask: "
-            "'Would you like our agent to monitor the market and automatically buy matching "
-            "credits when they become available?' — this must be a clear yes/no question. "
-            "Never invent listings. Max 5 sentences per listing."
+            "After presenting, ask 'Which of these interests you?' or similar — let the buyer choose. "
+            "If no listings were found, explain clearly and ask about autonomous monitoring. "
+            "Never invent listings. Never auto-select a listing for the buyer."
         )
     )
     listings_found: bool = Field(
@@ -214,7 +255,8 @@ class RecommendationOutput(BaseModel):
         None,
         description=(
             "The exact listing ID the buyer chose. "
-            "Set this when the buyer names, picks, selects, or says 'yes' to a specific listing. "
+            "ONLY set this when the buyer EXPLICITLY picks a listing by name, number, or reference. "
+            "Do NOT set this when just presenting search results — wait for the buyer to choose. "
             "Must be one of the IDs returned by the search tool."
         ),
     )
@@ -238,26 +280,25 @@ class RecommendationOutput(BaseModel):
         False,
         description=(
             "True when buyer agrees to let the autonomous agent buy on their behalf later. "
-            "Only set after explicitly asking and receiving an affirmative response "
-            "(yes, sure, ok, please do, go ahead, etc.)."
+            "Only set after explicitly asking and receiving an affirmative response."
         ),
     )
     buyer_declined_autobuy: bool = Field(
         False,
         description=(
-            "True when buyer explicitly says no to the autonomous agent option "
-            "(no, not now, maybe later, I'll come back, etc.)."
+            "True when buyer explicitly says no to the autonomous agent option."
         ),
     )
     advance_to_order: bool = Field(
         False,
         description=(
-            "Set True to create a draft order. "
-            "Set True when selected_listing_id is set. "
-            "IMPORTANT: when listings are available and buyer says yes/pick one, "
-            "set selected_listing_id AND advance_to_order=True — do not ask again."
+            "Set True ONLY when the buyer has explicitly selected a listing. "
+            "Must always be paired with a valid selected_listing_id. "
+            "Do NOT set True when just showing listings — wait for the buyer to choose."
         ),
     )
+
+    suggested_responses: List[str] = _SUGGESTED_RESPONSES_FIELD
 
     _validate_response = field_validator("response_text")(_nonempty_response)
 
@@ -290,6 +331,8 @@ class OrderOutput(BaseModel):
         None,
         description="Order ID from tool_create_order_draft if the draft was created.",
     )
+
+    suggested_responses: List[str] = _SUGGESTED_RESPONSES_FIELD
 
     _validate_response = field_validator("response_text")(_nonempty_response)
 

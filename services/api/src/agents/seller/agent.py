@@ -35,9 +35,10 @@ from models.operations.agent_runs import (
 from models.operations.listings import listing_get_by_seller
 from opentelemetry import trace as otel_trace
 
-from utils import log
+from utils import env, log
 
 from agents.shared.base import check_no_running_run
+from conf import SELLER_MODEL
 
 logger = log.get_logger(__name__)
 tracer = otel_trace.get_tracer("carbonbridge.seller_agent")
@@ -82,7 +83,7 @@ def _build_agent() -> Agent[SellerAgentDeps, SellerAdvisoryDecision]:
     """Construct the seller advisory Pydantic AI agent. Called once at module load."""
 
     agent = Agent(
-        "google-gla:gemini-3-flash-preview",
+        env.parse(SELLER_MODEL),
         deps_type=SellerAgentDeps,
         output_type=SellerAdvisoryDecision,
         system_prompt=(

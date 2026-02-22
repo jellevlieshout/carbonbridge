@@ -6,9 +6,6 @@ import { useWizardSendMessage } from "../hooks/useWizardSendMessage";
 import { useWizardSSE } from "../hooks/useWizardSSE";
 import { useWizardNavigation } from "../hooks/useWizardNavigation";
 import { WizardView } from "../views/WizardView";
-import { post } from "@clients/api/client";
-
-const NUDGE_DELAY_MS = 38_000; // 38s of silence → proactive agent follow-up
 
 interface WizardPresenterProps {
   onComplete?: () => void;
@@ -23,10 +20,10 @@ export function WizardPresenter({ onComplete }: WizardPresenterProps = {}) {
   const [currentStep, setCurrentStep] = useState<WizardStep>("profile_check");
   const [isComplete, setIsComplete] = useState(false);
   const [completionType, setCompletionType] = useState<"handoff" | "waitlist" | null>(null);
+  const [suggestions, setSuggestions] = useState<string[]>([]);
 
   const autoStarted = useRef(false);
   const [sessionSynced, setSessionSynced] = useState(false);
-  const nudgeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isCompleteRef = useRef(false);
 
   if (session && !sessionSynced) {
@@ -37,47 +34,17 @@ export function WizardPresenter({ onComplete }: WizardPresenterProps = {}) {
 
   const { currentIndex, totalSteps, label } = useWizardNavigation(currentStep);
 
-  // Keep a stable ref to startStream so we can use it in nudge timer
   const startStreamRef = useRef<((sessionId: string) => Promise<void>) | null>(null);
 
-  const clearNudge = useCallback(() => {
-    if (nudgeTimerRef.current) {
-      clearTimeout(nudgeTimerRef.current);
-      nudgeTimerRef.current = null;
-    }
+  const handleDone = useCallback((fullResponse: string) => {
+    setMessages((prev) => [...prev, { role: "assistant", content: fullResponse }]);
+    setStreamingText("");
   }, []);
-
-  const scheduleNudge = useCallback(
-    (sessionId: string) => {
-      clearNudge();
-      if (isCompleteRef.current) return;
-      nudgeTimerRef.current = setTimeout(async () => {
-        if (isCompleteRef.current) return;
-        try {
-          await post(`/wizard/session/${sessionId}/nudge`, {});
-          startStreamRef.current?.(sessionId);
-        } catch {
-          // ignore nudge errors
-        }
-      }, NUDGE_DELAY_MS);
-    },
-    [clearNudge],
-  );
-
-  const handleDone = useCallback(
-    (fullResponse: string) => {
-      setMessages((prev) => [...prev, { role: "assistant", content: fullResponse }]);
-      setStreamingText("");
-      if (session && !isCompleteRef.current) {
-        scheduleNudge(session.id);
-      }
-    },
-    [session, scheduleNudge],
-  );
 
   const handleError = useCallback((message: string) => {
     setMessages((prev) => [...prev, { role: "assistant", content: `⚠️ ${message}` }]);
     setStreamingText("");
+    setSuggestions([]);
   }, []);
 
   const { isStreaming, startStream } = useWizardSSE({
@@ -89,27 +56,29 @@ export function WizardPresenter({ onComplete }: WizardPresenterProps = {}) {
     }, []),
     onDone: handleDone,
     onError: handleError,
+    onSuggestions: useCallback((newSuggestions: string[]) => {
+      setSuggestions(newSuggestions);
+    }, []),
     onBuyerHandoff: useCallback(
       (_outcome: string, _message: string) => {
-        clearNudge();
         isCompleteRef.current = true;
         setIsComplete(true);
         setCompletionType("handoff");
+        setSuggestions([]);
       },
-      [clearNudge],
+      [],
     ),
     onAutobuyWaitlist: useCallback(
       (_optedIn: boolean) => {
-        clearNudge();
         isCompleteRef.current = true;
         setIsComplete(true);
         setCompletionType("waitlist");
+        setSuggestions([]);
       },
-      [clearNudge],
+      [],
     ),
   });
 
-  // Keep ref up-to-date
   useEffect(() => {
     startStreamRef.current = startStream;
   }, [startStream]);
@@ -121,16 +90,13 @@ export function WizardPresenter({ onComplete }: WizardPresenterProps = {}) {
     const history = session.data.conversation_history ?? [];
     if (history.length === 0) {
       startStream(session.id);
-    } else {
-      // Existing session with messages — schedule nudge in case user is idle
-      scheduleNudge(session.id);
     }
-  }, [session, sessionSynced, startStream, scheduleNudge]);
+  }, [session, sessionSynced, startStream]);
 
   const handleSend = useCallback(
     (text: string) => {
       if (!session) return;
-      clearNudge();
+      setSuggestions([]);
       setMessages((prev) => [...prev, { role: "user", content: text }]);
       setStreamingText("");
 
@@ -150,10 +116,8 @@ export function WizardPresenter({ onComplete }: WizardPresenterProps = {}) {
         },
       );
     },
-    [session, sendMessageMutation, startStream, clearNudge],
+    [session, sendMessageMutation, startStream],
   );
-
-  useEffect(() => () => clearNudge(), [clearNudge]);
 
   if (isLoading) {
     return (
@@ -190,6 +154,7 @@ export function WizardPresenter({ onComplete }: WizardPresenterProps = {}) {
         currentIndex={currentIndex}
         totalSteps={totalSteps}
         stepLabel={label}
+        suggestions={suggestions}
         onSend={handleSend}
       />
       {onComplete && (
