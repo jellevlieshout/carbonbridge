@@ -34,7 +34,7 @@ export function WizardCard({ stepLabel, stepNumber, totalSteps, children }: Wiza
       </div>
 
       {/* Content */}
-      <div ref={contentRef} className="flex-1 flex flex-col">
+      <div ref={contentRef} className="flex-1 flex flex-col min-h-0">
         {children}
       </div>
     </div>
