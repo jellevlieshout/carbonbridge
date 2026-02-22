@@ -1,16 +1,28 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useMemo } from 'react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
+import { useListingsQuery } from '~/modules/shared/queries/useListings';
+import type { Listing } from '@clients/api/listings';
 
 gsap.registerPlugin(ScrollTrigger);
 
 export function MarketplaceSpotlight() {
     const containerRef = useRef<HTMLDivElement>(null);
-    const priceText = "€16.80";
+    const { data, isLoading } = useListingsQuery();
+
+    // Pick the first active listing with available stock as the "spotlight"
+    const listing = useMemo(() => {
+        const raw = data?.listings ?? [];
+        return raw.find(
+            (l: Listing) => l.status === 'active' && (l.quantity_tonnes - l.quantity_reserved - l.quantity_sold) >= 1
+        ) ?? null;
+    }, [data]);
+
+    const priceText = listing ? `€${listing.price_per_tonne_eur.toFixed(2)}` : '—';
 
     useEffect(() => {
+        if (!containerRef.current || !listing) return;
         const ctx = gsap.context(() => {
-            // Parallax effect on background
             gsap.to(".parallax-bg", {
                 y: "20%",
                 ease: "none",
@@ -22,7 +34,6 @@ export function MarketplaceSpotlight() {
                 }
             });
 
-            // Split text reveal simulation (since SplitText plugin requires premium)
             gsap.fromTo(
                 ".price-char",
                 { opacity: 0, y: 50 },
@@ -40,7 +51,28 @@ export function MarketplaceSpotlight() {
             );
         }, containerRef);
         return () => ctx.revert();
-    }, []);
+    }, [listing]);
+
+    if (isLoading) {
+        return (
+            <div className="w-full rounded-[2rem] bg-slate overflow-hidden min-h-[400px] mt-12 flex items-center justify-center">
+                <div className="w-8 h-8 border-2 border-linen/15 border-t-linen/50 rounded-full animate-spin" />
+            </div>
+        );
+    }
+
+    if (!listing) {
+        return (
+            <div className="w-full rounded-[2rem] bg-slate overflow-hidden min-h-[300px] mt-12 flex items-center justify-center">
+                <p className="font-serif italic text-2xl text-linen/20">No listings available yet</p>
+            </div>
+        );
+    }
+
+    const verificationLabel = listing.verification_status === 'verified' ? 'Independent Verification' : listing.verification_status;
+    const registryDisplay = listing.registry_name || 'Carbon Registry';
+    const locationDisplay = listing.project_country || 'Global';
+    const coBenefits = listing.co_benefits?.length > 0 ? listing.co_benefits : [];
 
     return (
         <div
@@ -62,7 +94,7 @@ export function MarketplaceSpotlight() {
                 {/* Left Column: Editorial Large Text */}
                 <div className="flex flex-col gap-4 lg:w-3/5">
                     <h2 className="text-linen font-sans font-bold text-3xl tracking-tight">
-                        Borneo Peatland Restoration
+                        {listing.project_name}
                     </h2>
                     <div className="flex items-baseline gap-4 mt-4">
                         <span className="text-linen font-serif italic text-[7rem] leading-none tracking-tighter">
@@ -79,23 +111,35 @@ export function MarketplaceSpotlight() {
                     <div>
                         <span className="block font-mono text-xs text-linen/60 uppercase tracking-widest mb-1">Standard</span>
                         <span className="font-sans text-lg font-medium text-linen flex items-center gap-2">
-                            Verified Carbon Standard
-                            <div className="bg-emerald-500/20 text-emerald-300 text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wider border border-emerald-500/30">Independent Verification</div>
+                            {registryDisplay}
+                            {listing.verification_status === 'verified' && (
+                                <div className="bg-emerald-500/20 text-emerald-300 text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wider border border-emerald-500/30">{verificationLabel}</div>
+                            )}
                         </span>
                     </div>
 
                     <div>
                         <span className="block font-mono text-xs text-linen/60 uppercase tracking-widest mb-1">Location</span>
-                        <span className="font-sans text-lg font-medium text-linen">Kalimantan, Indonesia</span>
+                        <span className="font-sans text-lg font-medium text-linen">{locationDisplay}</span>
                     </div>
 
-                    <div>
-                        <span className="block font-mono text-xs text-linen/60 uppercase tracking-widest mb-2">Co-Benefits</span>
-                        <div className="flex gap-2">
-                            <span className="bg-linen/10 text-linen text-xs px-3 py-1.5 rounded-full border border-linen/20">Biodiversity</span>
-                            <span className="bg-linen/10 text-linen text-xs px-3 py-1.5 rounded-full border border-linen/20">Community Health</span>
+                    {coBenefits.length > 0 && (
+                        <div>
+                            <span className="block font-mono text-xs text-linen/60 uppercase tracking-widest mb-2">Co-Benefits</span>
+                            <div className="flex flex-wrap gap-2">
+                                {coBenefits.map((b) => (
+                                    <span key={b} className="bg-linen/10 text-linen text-xs px-3 py-1.5 rounded-full border border-linen/20">{b}</span>
+                                ))}
+                            </div>
                         </div>
-                    </div>
+                    )}
+
+                    {listing.vintage_year && (
+                        <div>
+                            <span className="block font-mono text-xs text-linen/60 uppercase tracking-widest mb-1">Vintage</span>
+                            <span className="font-sans text-lg font-medium text-linen">{listing.vintage_year}</span>
+                        </div>
+                    )}
                 </div>
             </div>
         </div>
