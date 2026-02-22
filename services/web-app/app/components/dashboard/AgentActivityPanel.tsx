@@ -300,7 +300,7 @@ export function AgentActivityPanel() {
     const containerRef = useRef<HTMLDivElement>(null);
     const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
 
-    const { data: runs, isLoading: runsLoading } = useAgentRuns();
+    const { data: runs, isLoading: runsLoading } = useAgentRuns('autonomous_buyer');
     const { data: runDetail } = useAgentRunDetail(selectedRunId);
     const triggerMutation = useAgentTrigger();
     const approveMutation = useAgentApprove();
@@ -310,6 +310,7 @@ export function AgentActivityPanel() {
     const prevRunCountRef = useRef<number>(0);
     const feedRef = useRef<HTMLDivElement>(null);
     const prevCardCountRef = useRef<number>(0);
+    const animatedRunIdRef = useRef<string | null>(null);
 
     // Auto-select first run
     useEffect(() => {
@@ -348,26 +349,41 @@ export function AgentActivityPanel() {
     }, []);
 
     // GSAP stagger animation for stream cards
-    const animateStreamCards = useCallback(() => {
+    const animateStreamCards = useCallback((animateAll = false) => {
         if (!feedRef.current) return;
         const cards = feedRef.current.querySelectorAll('.stream-card');
         if (!cards.length) return;
 
-        // Only animate new cards (cards beyond prevCardCountRef)
-        const newCards = Array.from(cards).slice(0, cards.length - prevCardCountRef.current);
-        if (newCards.length === 0 && prevCardCountRef.current > 0) return;
-
-        const targets = newCards.length > 0 ? newCards : Array.from(cards);
-
-        gsap.fromTo(targets,
-            { y: 24, opacity: 0, scale: 0.97 },
-            {
-                y: 0, opacity: 1, scale: 1,
-                duration: 0.5, stagger: 0.08,
-                ease: "back.out(1.4)",
-                clearProps: "transform",
+        if (animateAll) {
+            // Animate all cards (e.g. when switching runs)
+            gsap.fromTo(Array.from(cards),
+                { y: 24, opacity: 0, scale: 0.97 },
+                {
+                    y: 0, opacity: 1, scale: 1,
+                    duration: 0.5, stagger: 0.08,
+                    ease: "back.out(1.4)",
+                    clearProps: "transform,opacity",
+                }
+            );
+        } else {
+            // Only animate new cards (cards beyond prevCardCountRef)
+            const newCards = Array.from(cards).slice(0, cards.length - prevCardCountRef.current);
+            if (newCards.length === 0) {
+                // No new cards — ensure existing cards stay visible
+                gsap.set(Array.from(cards), { opacity: 1 });
+                return;
             }
-        );
+
+            gsap.fromTo(newCards,
+                { y: 24, opacity: 0, scale: 0.97 },
+                {
+                    y: 0, opacity: 1, scale: 1,
+                    duration: 0.5, stagger: 0.08,
+                    ease: "back.out(1.4)",
+                    clearProps: "transform,opacity",
+                }
+            );
+        }
     }, []);
 
     // Derive data
@@ -376,11 +392,19 @@ export function AgentActivityPanel() {
         : [];
     const listingCards = runDetail?.trace_steps ? extractListingCards(runDetail.trace_steps) : [];
 
-    // Trigger animation when card count changes
+    // Reset animation state when switching runs
     useEffect(() => {
-        if (streamCards.length > 0 && streamCards.length !== prevCardCountRef.current) {
-            // Small delay for DOM to render new cards
-            requestAnimationFrame(() => animateStreamCards());
+        if (selectedRunId && selectedRunId !== animatedRunIdRef.current) {
+            prevCardCountRef.current = 0;
+            animatedRunIdRef.current = selectedRunId;
+        }
+    }, [selectedRunId]);
+
+    // Trigger animation when card count changes or run switches
+    useEffect(() => {
+        if (streamCards.length > 0) {
+            const isNewRun = prevCardCountRef.current === 0;
+            requestAnimationFrame(() => animateStreamCards(isNewRun));
         }
         prevCardCountRef.current = streamCards.length;
     }, [streamCards.length, animateStreamCards]);
@@ -518,7 +542,6 @@ export function AgentActivityPanel() {
                                                 <div
                                                     key={`${card.time}-${i}`}
                                                     className={`stream-card flex gap-3 p-3.5 rounded-xl border backdrop-blur-sm bg-linen/[0.03] ${styles.border}`}
-                                                    style={{ opacity: 0 }}
                                                 >
                                                     <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${styles.iconBg}`}>
                                                         <Icon size={15} strokeWidth={2} className={styles.iconText} />
