@@ -46,3 +46,7 @@ export async function orderCancel(orderId: string): Promise<Order> {
 export async function orderConfirmPayment(paymentIntentId: string): Promise<Order> {
     return await post('/orders/confirm-payment', { payment_intent_id: paymentIntentId });
 }
+
+export async function orderMockConfirm(orderId: string): Promise<Order> {
+    return await post(`/orders/${orderId}/mock-confirm`, {});
+}

@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { ordersGetMine, orderCreate, orderCancel, orderConfirmPayment } from "@clients/api/orders";
+import { ordersGetMine, orderCreate, orderCancel, orderConfirmPayment, orderMockConfirm } from "@clients/api/orders";
 import type { CreateOrderRequest } from "@clients/api/orders";
 
 export const useOrdersQuery = () => {
@@ -42,6 +42,17 @@ export const useConfirmPayment = () => {
     const queryClient = useQueryClient();
     return useMutation({
         mutationFn: (paymentIntentId: string) => orderConfirmPayment(paymentIntentId),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["orders", "me"] });
+            queryClient.invalidateQueries({ queryKey: ["listings"] });
+        },
+    });
+};
+
+export const useMockConfirmOrder = () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: (orderId: string) => orderMockConfirm(orderId),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["orders", "me"] });
             queryClient.invalidateQueries({ queryKey: ["listings"] });

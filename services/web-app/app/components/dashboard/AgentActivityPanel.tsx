@@ -3,6 +3,7 @@ import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { useAgentRuns, useAgentRunDetail, useAgentTrigger, useAgentApprove, useAgentReject } from '../../modules/shared/queries/useAgentRuns';
 import type { AgentRunSummary, TraceStep } from '@clients/api/agent';
+import { toast } from 'sonner';
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -618,7 +619,12 @@ export function AgentActivityPanel() {
                             {runDetail.status === 'awaiting_approval' && (
                                 <div className="flex flex-col gap-2">
                                     <button
-                                        onClick={() => approveMutation.mutate(runDetail.id)}
+                                        onClick={() => approveMutation.mutate(runDetail.id, {
+                                            onError: (err: any) => {
+                                                toast.error(err.message || "Failed to approve purchase");
+                                                approveMutation.reset();
+                                            },
+                                        })}
                                         disabled={approveMutation.isPending}
                                         className="w-full py-3 bg-linen text-canopy font-sans font-medium rounded-xl hover:bg-linen/90 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                                     >

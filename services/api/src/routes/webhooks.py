@@ -7,7 +7,7 @@ from models.operations.orders import (
     order_update_payment_status,
     order_record_ledger_entries,
 )
-from models.operations.listings import listing_get, listing_update
+from models.operations.listings import listing_confirm_sale
 from utils import env, log
 
 logger = log.get_logger(__name__)
@@ -64,13 +64,7 @@ async def route_stripe_webhook(request: Request):
 
         # Move reserved → sold on each listing
         for li in order.data.line_items:
-            listing = await listing_get(li.listing_id)
-            if listing:
-                listing.data.quantity_reserved -= li.quantity
-                listing.data.quantity_sold += li.quantity
-                if listing.data.quantity_sold >= listing.data.quantity_tonnes:
-                    listing.data.status = "sold_out"
-                await listing_update(listing)
+            await listing_confirm_sale(li.listing_id, li.quantity)
 
         logger.info(f"Order {order.id} completed via webhook")
 
