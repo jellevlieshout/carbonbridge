@@ -46,3 +46,5 @@ buckets:
           wizard_sessions: {}
           market_insights: {}
           sync_logs: {}
+          auctions: {}
+          bids: {}
