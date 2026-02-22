@@ -67,6 +67,10 @@ def _waitlist_event(opted_in: bool) -> Dict[str, Any]:
     return {"type": "autobuy_waitlist", "opted_in": opted_in}
 
 
+def _suggestions_event(suggestions: list) -> Dict[str, Any]:
+    return {"type": "suggestions", "suggestions": suggestions}
+
+
 # ── Token streamer ────────────────────────────────────────────────────
 
 
@@ -407,8 +411,13 @@ async def run_wizard_turn(
     if step_advanced and new_step:
         yield _step_change_event(new_step)
 
-    # 8. Emit done
+    # 8. Emit done, then suggestions (quick-reply hints for the UI)
     yield _done_event(full_response)
+
+    if final_state is not None and not graph_error:
+        suggestions = final_state.get("suggested_responses") or []
+        if suggestions:
+            yield _suggestions_event(suggestions)
 
     # 9. Persist all updates to Couchbase (best-effort; log on failure)
     try:

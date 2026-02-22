@@ -51,6 +51,7 @@ from opentelemetry import trace as otel_trace
 from utils import env, log
 
 from agents.shared.base import check_no_running_run
+from conf import BUYER_MODEL
 from .budget import get_remaining_budget_eur
 from .scorer import rank_listings
 
@@ -117,7 +118,7 @@ def _build_agent() -> Agent[BuyerAgentDeps, AgentDecision]:
     """Construct the Pydantic AI agent with Gemini. Called once at module load."""
 
     agent = Agent(
-        "google-gla:gemini-3-flash-preview",
+        env.parse(BUYER_MODEL),
         deps_type=BuyerAgentDeps,
         output_type=AgentDecision,
         system_prompt=(

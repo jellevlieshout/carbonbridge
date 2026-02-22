@@ -72,6 +72,7 @@ class WizardState(TypedDict, total=False):
     # ── output produced by the current node ──────────────────────────
     response_text: str
     next_step: Optional[str]
+    suggested_responses: List[str]   # LLM-generated quick-reply suggestions
 
     # ── error signal ──────────────────────────────────────────────────
     error: Optional[str]
@@ -117,6 +118,7 @@ def state_from_session(
         conversation_complete=False,
         response_text="",
         next_step=None,
+        suggested_responses=[],
         error=None,
         is_nudge=is_nudge,
         session_created_at=getattr(d, "created_at", None),

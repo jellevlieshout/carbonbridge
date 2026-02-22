@@ -44,11 +44,15 @@ const SECTORS = [
 ];
 
 const COUNTRIES = [
+    'Sweden',
     'Netherlands',
     'United Kingdom',
     'Germany',
     'France',
     'Belgium',
+    'Denmark',
+    'Norway',
+    'Finland',
     'United States',
     'Brazil',
     'India',

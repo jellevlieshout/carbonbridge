@@ -61,7 +61,13 @@ HTTP_EXPOSE_ERRORS = EnvVarSpec(
 ## AI Agents ##
 
 WIZARD_MODEL = EnvVarSpec(
-    id="WIZARD_MODEL", default="gemini-2.5-flash-lite", is_optional=True
+    id="WIZARD_MODEL", default="gemini-3-flash-preview", is_optional=True
+)
+BUYER_MODEL = EnvVarSpec(
+    id="BUYER_MODEL", default="google-gla:gemini-3-flash-preview", is_optional=True
+)
+SELLER_MODEL = EnvVarSpec(
+    id="SELLER_MODEL", default="google-gla:gemini-3-flash-preview", is_optional=True
 )
 GOOGLE_API_KEY = EnvVarSpec(id="GOOGLE_API_KEY", is_optional=True, is_secret=True)
 # GEMINI_API is the secret name set via Polytope; expose as GEMINI_API_KEY too

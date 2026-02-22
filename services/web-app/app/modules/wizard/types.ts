@@ -67,13 +67,19 @@ export interface SSEAutobuywaitlistEvent {
   opted_in: boolean;
 }
 
+export interface SSESuggestionsEvent {
+  type: "suggestions";
+  suggestions: string[];
+}
+
 export type SSEEvent =
   | SSETokenEvent
   | SSEStepChangeEvent
   | SSEDoneEvent
   | SSEErrorEvent
   | SSEBuyerHandoffEvent
-  | SSEAutobuywaitlistEvent;
+  | SSEAutobuywaitlistEvent
+  | SSESuggestionsEvent;
 
 // Visual step mapping — collapses 7 backend steps into 5 visual dots
 export const STEP_ORDER: WizardStep[] = [

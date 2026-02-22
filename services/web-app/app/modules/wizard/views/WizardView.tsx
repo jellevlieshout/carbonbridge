@@ -13,6 +13,7 @@ interface WizardViewProps {
   currentIndex: number;
   totalSteps: number;
   stepLabel: string;
+  suggestions: string[];
   onSend: (text: string) => void;
 }
 
@@ -23,6 +24,7 @@ export function WizardView({
   currentIndex,
   totalSteps,
   stepLabel,
+  suggestions,
   onSend,
 }: WizardViewProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -32,7 +34,7 @@ export function WizardView({
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages, streamingText]);
+  }, [messages, streamingText, suggestions]);
 
   return (
     <div className="flex flex-col gap-4 w-full">
@@ -57,6 +59,27 @@ export function WizardView({
             <AgentMessage content="" isStreaming />
           )}
         </div>
+
+        {/* Quick-reply suggestion chips */}
+        {!isStreaming && suggestions.length > 0 && (
+          <div className="px-6 pb-3 pt-1 flex flex-wrap gap-2 border-t border-mist/50">
+            {suggestions.map((suggestion, i) => (
+              <button
+                key={i}
+                onClick={() => onSend(suggestion)}
+                className="
+                  px-3 py-1.5 rounded-full text-xs font-medium border border-canopy/30
+                  bg-canopy/5 text-canopy hover:bg-canopy/15 hover:border-canopy/60
+                  transition-all duration-150 cursor-pointer
+                  animate-in fade-in slide-in-from-bottom-1
+                "
+                style={{ animationDelay: `${i * 60}ms`, animationFillMode: "both" }}
+              >
+                {suggestion}
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* Input */}
         <ChatInput onSend={onSend} disabled={isStreaming} />
