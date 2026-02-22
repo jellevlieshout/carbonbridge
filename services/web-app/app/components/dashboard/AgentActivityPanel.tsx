@@ -299,6 +299,8 @@ function RunPill({ run, isSelected, onSelect }: { run: AgentRunSummary; isSelect
 export function AgentActivityPanel() {
     const containerRef = useRef<HTMLDivElement>(null);
     const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
+    const [triggerFeedback, setTriggerFeedback] = useState<'idle' | 'pressed' | 'success'>('idle');
+    const triggerFeedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const { data: runs, isLoading: runsLoading } = useAgentRuns('autonomous_buyer');
     const { data: runDetail } = useAgentRunDetail(selectedRunId);
@@ -410,10 +412,24 @@ export function AgentActivityPanel() {
     }, [streamCards.length, animateStreamCards]);
 
     const handleTrigger = () => {
+        setTriggerFeedback('pressed');
         triggerMutation.mutate(undefined, {
+            onSuccess: () => {
+                setTriggerFeedback('success');
+                if (triggerFeedbackTimeoutRef.current) clearTimeout(triggerFeedbackTimeoutRef.current);
+                triggerFeedbackTimeoutRef.current = setTimeout(() => {
+                    setTriggerFeedback('idle');
+                }, 1200);
+            },
             onError: (err: any) => console.error('Agent trigger failed:', err),
         });
     };
+
+    useEffect(() => {
+        return () => {
+            if (triggerFeedbackTimeoutRef.current) clearTimeout(triggerFeedbackTimeoutRef.current);
+        };
+    }, []);
 
     return (
         <div ref={containerRef} className="relative w-full rounded-[2rem] bg-canopy text-linen overflow-hidden shadow-sm">
@@ -433,14 +449,23 @@ export function AgentActivityPanel() {
                     <button
                         onClick={handleTrigger}
                         disabled={triggerMutation.isPending}
-                        className="agent-stagger shrink-0 px-6 py-3 bg-linen text-canopy font-sans font-medium rounded-xl hover:bg-linen/90 transition-all duration-300 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2 shadow-sm"
+                        className={`agent-stagger shrink-0 px-6 py-3 font-sans font-medium rounded-xl transition-all duration-300 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2 shadow-sm active:scale-[0.98] ${
+                            triggerFeedback === 'success'
+                                ? 'bg-emerald-100 text-emerald-900'
+                                : 'bg-linen text-canopy hover:bg-linen/90'
+                        } ${triggerFeedback === 'pressed' ? 'ring-2 ring-linen/40' : ''}`}
                     >
                         {triggerMutation.isPending ? (
                             <>
                                 <span className="w-3.5 h-3.5 border-2 border-canopy/30 border-t-canopy rounded-full animate-spin" />
                                 Running...
                             </>
-                        ) : 'Run Agent Now'}
+                        ) : triggerFeedback === 'success' ? (
+                            <>
+                                <CircleCheck size={16} strokeWidth={2.2} />
+                                Started
+                            </>
+                        ) : triggerFeedback === 'pressed' ? 'Starting...' : 'Run Agent Now'}
                     </button>
                 </div>
 
