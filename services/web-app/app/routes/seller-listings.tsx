@@ -7,7 +7,6 @@ import { ScrollTrigger } from 'gsap/ScrollTrigger';
 
 import { SellerHeroPanel } from '../components/seller/SellerHeroPanel';
 import { SellerStatsTiles } from '../components/seller/SellerStatsTiles';
-import { SellerAdvisoryPanel } from '../components/seller/SellerAdvisoryPanel';
 import { SellerListingCard } from '../components/seller/SellerListingCard';
 import { EditListingModal } from '../components/seller/EditListingModal';
 import { CreateListingModal } from '../components/seller/CreateListingModal';
@@ -100,9 +99,6 @@ export default function SellerListingsPage() {
 
             {/* Stats Tiles */}
             {!isLoading && <SellerStatsTiles listings={listings} />}
-
-            {/* Advisory Panel */}
-            <SellerAdvisoryPanel />
 
             {/* Section header + Filter Tabs */}
             <div className="flex items-end justify-between mt-4">

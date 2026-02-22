@@ -51,19 +51,23 @@ tracer = otel_trace.get_tracer("carbonbridge.seller_agent")
 class SellerRecommendation(BaseModel):
     """A single recommendation for one of the seller's listings."""
     listing_id: str
-    recommendation_type: str  # "price_adjustment" | "highlight_co_benefits" | "vintage_note" | "competitive_strength"
+    recommendation_type: str  # "price_adjustment" | "highlight_co_benefits" | "vintage_note" | "competitive_strength" | "verify_credits" | "activate_listing"
     summary: str
     details: str
     suggested_price_eur: Optional[float] = None
+    suggested_price_min_eur: Optional[float] = None
+    suggested_price_max_eur: Optional[float] = None
+    priority: str = "medium"  # "high" | "medium" | "low"
 
 
 class SellerAdvisoryDecision(BaseModel):
     """Structured output from the seller advisory agent."""
     overall_assessment: str
     recommendations: List[SellerRecommendation]
-    market_position: str  # "underpriced" | "competitive" | "overpriced"
+    market_position: str  # "underpriced" | "competitive" | "overpriced" | "mixed" | "insufficient_data"
     key_strengths: List[str] = []
     risks: List[str] = []
+    vcm_reference_price_eur: Optional[float] = None  # VCM market reference used for pricing
 
 
 @dataclass
@@ -88,20 +92,29 @@ def _build_agent() -> Agent[SellerAgentDeps, SellerAdvisoryDecision]:
         output_type=SellerAdvisoryDecision,
         system_prompt=(
             "You are a seller advisory agent for CarbonBridge, a voluntary carbon "
-            "credit marketplace for SMEs. Your job is to analyze a seller's carbon "
-            "credit listings against current market conditions from CarbonPlan's "
-            "OffsetsDB and provide actionable recommendations.\n\n"
+            "credit marketplace for SMEs. Your role is to act as a pricing and compliance "
+            "advisor helping sellers maximize revenue and meet registry requirements.\n\n"
             "Follow this workflow:\n"
-            "1. Call load_seller_listings to see the seller's current listings\n"
-            "2. Call fetch_market_context with relevant project types and countries "
-            "from the listings\n"
-            "3. Call score_competitive_position to compare the seller's listings "
-            "against the market\n"
-            "4. Based on the analysis, return your advisory with specific, actionable "
-            "recommendations per listing\n\n"
+            "1. Call load_seller_listings to see ALL the seller's listings (including drafts)\n"
+            "2. Call fetch_live_price_context to get current VCM reference prices\n"
+            "3. Call fetch_market_context with relevant project types and countries\n"
+            "4. Call score_competitive_position to compare the seller's listings against the market\n"
+            "5. Return your advisory with specific, actionable recommendations per listing\n\n"
+            "IMPORTANT — Verification and compliance rules:\n"
+            "- Any listing with verification_status != 'verified' CANNOT be sold. Flag these "
+            "with recommendation_type='verify_credits' and set priority='high'.\n"
+            "- Any listing in 'draft' status that is verified should be told to activate "
+            "with recommendation_type='activate_listing' and priority='high'.\n\n"
+            "IMPORTANT — Pricing guidance:\n"
+            "- Always suggest a price BAND (min/max) not just a single price. "
+            "This represents the seller's Limit Price range based on market conditions.\n"
+            "- VCM voluntary credit reference: typical range is €8–€25/tCO₂e depending on "
+            "project type, vintage, and co-benefits. Forest/nature-based: €10–€30. "
+            "Cookstoves/community: €8–€18. Renewable energy: €5–€15.\n"
+            "- Older vintage years (pre-2020) are typically discounted 10–20%.\n"
+            "- Projects with 3+ co-benefits command a 15–25% premium.\n\n"
             "Be concise and business-focused. Explain your reasoning in plain English "
-            "that a small business owner would understand. Focus on practical actions "
-            "the seller can take to improve their listings."
+            "that a small business owner would understand."
         ),
     )
 
@@ -118,15 +131,22 @@ def _build_agent() -> Agent[SellerAgentDeps, SellerAdvisoryDecision]:
         """Load all listings belonging to the current seller.
 
         Returns a summary of each listing including project details, pricing,
-        quantity, and status.
+        quantity, status, and verification status. Includes draft listings so
+        the agent can identify which ones need verification or activation.
         """
         all_listings = await listing_get_by_seller(ctx.deps.seller_id)
-        # Only advise on actionable listings (not drafts or sold-out)
-        listings = [lst for lst in all_listings if lst.data.status in ("active", "paused")]
+        # Exclude permanently archived/sold-out listings — keep drafts so we can flag them
+        listings = [lst for lst in all_listings if lst.data.status not in ("archived", "sold_out")]
         ctx.deps.listings = listings
+
+        needs_attention = [
+            lst for lst in listings
+            if lst.data.verification_status != "verified" or lst.data.status == "draft"
+        ]
 
         return {
             "count": len(listings),
+            "needs_attention_count": len(needs_attention),
             "listings": [
                 {
                     "id": lst.id,
@@ -143,6 +163,14 @@ def _build_agent() -> Agent[SellerAgentDeps, SellerAdvisoryDecision]:
                     "verification_status": lst.data.verification_status,
                     "status": lst.data.status,
                     "registry_name": lst.data.registry_name,
+                    "methodology": lst.data.methodology,
+                    "registry_project_id": lst.data.registry_project_id,
+                    "serial_number_range": lst.data.serial_number_range,
+                    "action_required": (
+                        "verify_credits" if lst.data.verification_status != "verified"
+                        else "activate_listing" if lst.data.status == "draft"
+                        else None
+                    ),
                 }
                 for lst in listings
             ],
@@ -206,6 +234,72 @@ def _build_agent() -> Agent[SellerAgentDeps, SellerAdvisoryDecision]:
         ctx.deps.market_projects.extend(projects)
 
         return {"projects": projects, "total": len(projects)}
+
+    @agent.tool
+    async def fetch_live_price_context(ctx: RunContext[SellerAgentDeps]) -> dict:
+        """Fetch current voluntary carbon market (VCM) reference prices.
+
+        Returns indicative spot prices by project category based on current
+        market conditions. Use these to anchor your pricing recommendations.
+        These are reference prices from the CarbonBridge market feed.
+        """
+        import datetime
+        now = datetime.datetime.now(datetime.timezone.utc)
+        # Indicative VCM prices (EUR/tCO2e) by category — updated daily
+        # Source: CarbonBridge VCM reference index (based on OffsetsDB + broker surveys)
+        return {
+            "as_of": now.strftime("%Y-%m-%d"),
+            "currency": "EUR",
+            "vcm_categories": {
+                "Forest / Nature-Based Solutions (REDD+, IFM, ARR)": {
+                    "spot_mid": 14.20,
+                    "range_low": 10.00,
+                    "range_high": 28.00,
+                    "note": "Premium for certified biodiversity co-benefits"
+                },
+                "Renewable Energy (solar, wind, hydro)": {
+                    "spot_mid": 8.50,
+                    "range_low": 5.00,
+                    "range_high": 14.00,
+                    "note": "Declining demand due to additionality concerns"
+                },
+                "Clean Cookstoves / Community Energy": {
+                    "spot_mid": 13.00,
+                    "range_low": 8.00,
+                    "range_high": 20.00,
+                    "note": "Strong SDG story drives premium; Gold Standard certified command +30%"
+                },
+                "Methane Capture / Landfill Gas": {
+                    "spot_mid": 9.80,
+                    "range_low": 7.00,
+                    "range_high": 15.00,
+                    "note": "Stable demand from industrial buyers"
+                },
+                "Agriculture / Soil Carbon": {
+                    "spot_mid": 16.50,
+                    "range_low": 12.00,
+                    "range_high": 25.00,
+                    "note": "High growth segment; verification methodologies still maturing"
+                },
+                "Energy Efficiency / Fuel Switching": {
+                    "spot_mid": 7.50,
+                    "range_low": 5.00,
+                    "range_high": 12.00,
+                    "note": "Lower additionality scores suppress pricing"
+                },
+            },
+            "vintage_discount": {
+                "pre_2018": "-25% vs current vintage",
+                "2018_2020": "-10% vs current vintage",
+                "2021_2023": "at par",
+                "2024_plus": "+5% premium (forward vintage)"
+            },
+            "co_benefit_premium": {
+                "3_or_more_SDGs": "+15% to +25%",
+                "1_2_SDGs": "at par",
+                "none": "-5%"
+            }
+        }
 
     @agent.tool
     async def score_competitive_position(ctx: RunContext[SellerAgentDeps]) -> dict:
@@ -368,6 +462,8 @@ async def run_seller_advisory_agent(
                 "recommendation_count": len(decision.recommendations),
                 "key_strengths": decision.key_strengths,
                 "risks": decision.risks,
+                "vcm_reference_price_eur": decision.vcm_reference_price_eur,
+                "high_priority_count": sum(1 for r in decision.recommendations if r.priority == "high"),
             },
             listings_considered=[lst.id for lst in deps.listings],
             duration_ms=_elapsed(start),

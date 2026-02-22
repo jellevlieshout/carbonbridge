@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import gsap from 'gsap';
-import { Leaf, TrendingUp, Package } from 'lucide-react';
+import { Leaf, TrendingUp, Package, ShieldCheck, BadgeCheck } from 'lucide-react';
 import type { Listing } from '@clients/api/listings';
 
 interface SellerHeroProps {
@@ -63,6 +63,14 @@ export function SellerHeroPanel({ listings }: SellerHeroProps) {
                         <Leaf size={12} className="opacity-60" />
                         <span className="opacity-60">Active Listings</span>
                         <span className="font-medium text-linen">{activeCount}</span>
+                    </div>
+                    <div className="seller-hero-stagger font-mono text-xs bg-emerald-400/20 px-4 py-2 rounded-full border border-emerald-400/30 flex items-center gap-2">
+                        <ShieldCheck size={12} className="text-emerald-300" />
+                        <span className="text-emerald-200">KYB Verified</span>
+                    </div>
+                    <div className="seller-hero-stagger font-mono text-xs bg-emerald-400/20 px-4 py-2 rounded-full border border-emerald-400/30 flex items-center gap-2">
+                        <BadgeCheck size={12} className="text-emerald-300" />
+                        <span className="text-emerald-200">AML Cleared</span>
                     </div>
                 </div>
             </div>

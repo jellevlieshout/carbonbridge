@@ -20,6 +20,9 @@ import {
     Zap,
     Wheat,
     Loader2,
+    Hash,
+    BadgeCheck,
+    FileText,
 } from 'lucide-react';
 import type { Route } from "./+types/onboarding";
 
@@ -88,6 +91,9 @@ export default function OnboardingPage() {
     const [sector, setSector] = useState('');
     const [country, setCountry] = useState('');
     const [companySize, setCompanySize] = useState('');
+    const [vatNumber, setVatNumber] = useState('');
+    const [leiCode, setLeiCode] = useState('');
+    const [registryAccountId, setRegistryAccountId] = useState('');
 
     // Buyer-specific fields
     const [annualCo2, setAnnualCo2] = useState('');
@@ -104,7 +110,7 @@ export default function OnboardingPage() {
                 // Advance to wizard step instead of navigating away
                 setStep(3);
             } else if (role === 'seller') {
-                navigate('/seller/agent', { replace: true });
+                navigate('/seller/listings', { replace: true });
             }
         },
     });
@@ -321,6 +327,59 @@ export default function OnboardingPage() {
                                             placeholder="Employees"
                                             className="w-full h-11 px-4 rounded-lg border border-mist bg-linen/50 text-slate font-sans text-sm placeholder:text-slate/30 focus:outline-none focus:border-canopy focus:ring-1 focus:ring-canopy/20 transition-colors"
                                         />
+                                    </div>
+                                </div>
+
+                                <div className="pt-2 border-t border-mist">
+                                    <p className="text-xs text-slate/40 mb-4 flex items-center gap-1.5">
+                                        <BadgeCheck size={12} />
+                                        Required for KYB verification &amp; AML compliance
+                                    </p>
+                                    <div className="space-y-4">
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="flex items-center gap-2 text-sm font-medium text-slate mb-2">
+                                                    <Hash size={14} className="text-slate/40" />
+                                                    VAT Number
+                                                </label>
+                                                <input
+                                                    type="text"
+                                                    value={vatNumber}
+                                                    onChange={(e) => setVatNumber(e.target.value)}
+                                                    placeholder="e.g. DE123456789"
+                                                    className="w-full h-11 px-4 rounded-lg border border-mist bg-linen/50 text-slate font-sans text-sm placeholder:text-slate/30 focus:outline-none focus:border-canopy focus:ring-1 focus:ring-canopy/20 transition-colors font-mono"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="flex items-center gap-2 text-sm font-medium text-slate mb-2">
+                                                    <BadgeCheck size={14} className="text-slate/40" />
+                                                    LEI Code
+                                                    <span className="text-[10px] text-slate/30 font-normal">(20-char)</span>
+                                                </label>
+                                                <input
+                                                    type="text"
+                                                    value={leiCode}
+                                                    onChange={(e) => setLeiCode(e.target.value)}
+                                                    placeholder="e.g. 5493001KJTIIGC8Y1R12"
+                                                    maxLength={20}
+                                                    className="w-full h-11 px-4 rounded-lg border border-mist bg-linen/50 text-slate font-sans text-sm placeholder:text-slate/30 focus:outline-none focus:border-canopy focus:ring-1 focus:ring-canopy/20 transition-colors font-mono"
+                                                />
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <label className="flex items-center gap-2 text-sm font-medium text-slate mb-2">
+                                                <FileText size={14} className="text-slate/40" />
+                                                EU ETS / VCM Registry Account ID
+                                                <span className="text-[10px] text-slate/30 font-normal">(optional)</span>
+                                            </label>
+                                            <input
+                                                type="text"
+                                                value={registryAccountId}
+                                                onChange={(e) => setRegistryAccountId(e.target.value)}
+                                                placeholder="e.g. EU-100-12345-0-67"
+                                                className="w-full h-11 px-4 rounded-lg border border-mist bg-linen/50 text-slate font-sans text-sm placeholder:text-slate/30 focus:outline-none focus:border-canopy focus:ring-1 focus:ring-canopy/20 transition-colors font-mono"
+                                            />
+                                        </div>
                                     </div>
                                 </div>
                             </div>
