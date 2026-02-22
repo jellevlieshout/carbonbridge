@@ -35,12 +35,12 @@ export function WizardView({
   }, [messages, streamingText]);
 
   return (
-    <div className="flex flex-col gap-4 w-full max-w-3xl mx-auto">
+    <div className="flex flex-col gap-4 w-full">
       <WizardProgressDots currentIndex={currentIndex} />
 
       <WizardCard stepLabel={stepLabel} stepNumber={currentIndex} totalSteps={totalSteps}>
         {/* Scrollable conversation area */}
-        <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+        <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-4 space-y-4 min-h-0">
           {messages.map((msg, i) =>
             msg.role === "assistant" ? (
               <AgentMessage key={i} content={msg.content} />

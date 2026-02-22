@@ -19,6 +19,7 @@ Error handling:
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, AsyncGenerator, Dict, Optional, cast
 
 from models.entities.couchbase.wizard_sessions import WizardStep
@@ -271,12 +272,15 @@ async def _persist_profile_updates(buyer_id: str, final_state: WizardState) -> N
 async def run_wizard_turn(
     session_id: str,
     buyer_id: str,
+    is_nudge: bool = False,
 ) -> AsyncGenerator[Dict[str, Any], None]:
     """
     Run one wizard turn and yield SSE event dicts.
 
     Expects the user message to have already been persisted to the session
     by POST /wizard/session/{id}/message before this generator is consumed.
+    When is_nudge=True (or detected automatically), the agent continues
+    proactively without waiting for user input.
     """
     # 1. Load session
     session = await wizard_session_get(session_id)
@@ -293,11 +297,21 @@ async def run_wizard_turn(
             latest_user_msg = msg.content
             break
 
+    # Determine if this is a nudge turn: no user message and history exists
+    history = session.data.conversation_history or []
+    has_history = len(history) > 0
+    is_nudge = is_nudge or (not latest_user_msg and has_history)
+
     if not latest_user_msg:
-        latest_user_msg = "Hello, I'd like to buy carbon offsets."
+        if is_nudge:
+            # Agent continues proactively — injects a guidance prompt
+            latest_user_msg = "__nudge__"
+        else:
+            # First ever turn — agent greets the buyer
+            latest_user_msg = "Hello, I'd like to start offsetting my company's carbon emissions."
 
     # 3. Hydrate state
-    initial_state: WizardState = state_from_session(session, latest_user_msg)
+    initial_state: WizardState = state_from_session(session, latest_user_msg, is_nudge=is_nudge)
 
     # 4. Run the LangGraph graph (one node per turn)
     final_state: Optional[WizardState] = None

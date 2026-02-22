@@ -121,29 +121,29 @@ def _build_agent() -> Agent[SellerAgentDeps, SellerAdvisoryDecision]:
         """
         all_listings = await listing_get_by_seller(ctx.deps.seller_id)
         # Only advise on actionable listings (not drafts or sold-out)
-        listings = [l for l in all_listings if l.data.status in ("active", "paused")]
+        listings = [lst for lst in all_listings if lst.data.status in ("active", "paused")]
         ctx.deps.listings = listings
 
         return {
             "count": len(listings),
             "listings": [
                 {
-                    "id": l.id,
-                    "project_name": l.data.project_name,
-                    "project_type": l.data.project_type,
-                    "project_country": l.data.project_country,
-                    "vintage_year": l.data.vintage_year,
-                    "price_per_tonne_eur": l.data.price_per_tonne_eur,
+                    "id": lst.id,
+                    "project_name": lst.data.project_name,
+                    "project_type": lst.data.project_type,
+                    "project_country": lst.data.project_country,
+                    "vintage_year": lst.data.vintage_year,
+                    "price_per_tonne_eur": lst.data.price_per_tonne_eur,
                     "quantity_available": round(
-                        l.data.quantity_tonnes - l.data.quantity_reserved - l.data.quantity_sold, 2
+                        lst.data.quantity_tonnes - lst.data.quantity_reserved - lst.data.quantity_sold, 2
                     ),
-                    "quantity_tonnes": l.data.quantity_tonnes,
-                    "co_benefits": l.data.co_benefits,
-                    "verification_status": l.data.verification_status,
-                    "status": l.data.status,
-                    "registry_name": l.data.registry_name,
+                    "quantity_tonnes": lst.data.quantity_tonnes,
+                    "co_benefits": lst.data.co_benefits,
+                    "verification_status": lst.data.verification_status,
+                    "status": lst.data.status,
+                    "registry_name": lst.data.registry_name,
                 }
-                for l in listings
+                for lst in listings
             ],
         }
 
@@ -368,7 +368,7 @@ async def run_seller_advisory_agent(
                 "key_strengths": decision.key_strengths,
                 "risks": decision.risks,
             },
-            listings_considered=[l.id for l in deps.listings],
+            listings_considered=[lst.id for lst in deps.listings],
             duration_ms=_elapsed(start),
         )
         step_idx += 1
@@ -404,7 +404,7 @@ async def run_seller_advisory_agent(
             run_id,
             action_taken="recommendations_generated",
             selection_rationale=decision.overall_assessment,
-            listings_shortlisted=[l.id for l in deps.listings],
+            listings_shortlisted=[lst.id for lst in deps.listings],
         )
 
         logger.info(
@@ -428,7 +428,9 @@ def _elapsed(start: float) -> int:
 
 
 async def _record_step(
-    run_id: str, step_index: int, step_type: str, label: str,
+    run_id: str, step_index: int,
+    step_type: Literal["tool_call", "reasoning", "decision", "output"],
+    label: str,
     input_data=None, output=None, listings_considered=None,
     score_breakdown=None, duration_ms=None,
 ):
