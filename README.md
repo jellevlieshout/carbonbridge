@@ -211,4 +211,6 @@ This project was built during a hackathon. All rights reserved.
 
 ---
 
+Made by team Filmstaden.
+
 *Project data sourced from [CarbonPlan OffsetsDB](https://carbonplan.org/research/offsets-db).*
